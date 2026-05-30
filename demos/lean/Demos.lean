@@ -17,3 +17,4 @@ import Demos.Ratchet.Generic
 import Demos.Pqxdh.KeySchedule
 import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
+import Demos.AuthChannel.Mac

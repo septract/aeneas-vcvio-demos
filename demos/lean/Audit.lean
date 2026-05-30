@@ -16,6 +16,7 @@ import Demos.Ratchet.Generic
 import Demos.Pqxdh.KeySchedule
 import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
+import Demos.AuthChannel.Mac
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -85,3 +86,9 @@ import Demos.Spqr.Authenticator
 #print axioms Spqr.Auth.update_split_spec
 #print axioms Spqr.Auth.auth_update_ikm_spec
 #print axioms Spqr.Auth.compare_loop_refl
+-- Demo 4 (message authentication): the extracted MAC `verify` is total and decides tag
+-- equality (value adequacy), its Boolean view decides equality, and the canonical PRF-based
+-- MAC (the libsignal HMAC shape) is perfectly complete — honest tags always verify.
+#print axioms AuthMac.verify_spec_pointwise
+#print axioms AuthMac.verifyB_eq_true_iff
+#print axioms AuthMac.macAlg_perfectlyComplete

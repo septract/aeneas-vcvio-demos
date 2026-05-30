@@ -109,7 +109,9 @@ theorem streamGen_advantage {S : Type} [SampleableType S]
   rw [hreal, hideal]
 
 /-- The explicit reduction adversary: distinguish the PRG's output by first running the
-extracted `combine` with the fixed message. No heavier than `A` (one `combine` call). -/
+extracted `combine` with the fixed message. Structurally it calls `A` once after one `combine`;
+this efficiency observation is *informal* — we do not formalize a cost/poly-time bound (see the
+README scope notes). -/
 def reduction (m : Block) (A : PRGAdversary Block) : PRGAdversary Block :=
   fun r => A (enc r m)
 

@@ -133,3 +133,27 @@ soundness additionally requires the chain length to be polynomial (an explicit, 
 premise). The ratchet illustrates the decomposition in `docs/`: the per-step **node** is lifted
 by Aeneas (ε = 0), the chain **sequencing** is authored in the Lean model, and the PRG hardness
 + poly-length are named assumptions. See `docs/` for the full discussion.
+
+### What is deliberately *not* formalized (honest open items)
+
+These are real limitations, stated so the theorems are not over-read. None is hidden inside a
+proof; each is either an explicit premise or an out-of-model assumption.
+
+- **No cost / polynomial-time bound (the main open item).** `prgAdvantage` quantifies over *all*
+  adversaries, with no runtime/query bound. So the reductions' "calls `A` once plus fixed work"
+  is an *informal, structural* observation — **not** a formalized cost bound, and security is
+  **not** stated against a poly-time adversary *class*. Closing this is the "cost adequacy" hinge
+  of `docs/2026-05-29_rough_theory.md` §8; VCVio has the machinery (`secureAgainst isPPT`, the
+  `CostModel` / `QueryBound` layer) but instantiating it here is a substantial, separate effort,
+  left as the next deliberate step rather than attempted superficially.
+- **Fixed width.** Key/block widths are constants (32/64 bytes); only the seed space, adversary,
+  and chain length scale with the security parameter. ChaCha20 is inherently fixed-width, so the
+  *extracted* node cannot scale width; `Chain.lean` is generic over the block type, but the
+  committed instance is one width.
+- **Symmetric KDF chain only — not the full Double Ratchet.** Demo 3 is Signal's *symmetric*
+  key-derivation chain (one party advancing message keys). It does **not** cover the asymmetric
+  Diffie–Hellman ratchet, out-of-order/skipped messages, header encryption, or two-party session
+  state. "Signal-style ratchet" here means exactly the symmetric KDF chain.
+- **Idealization gap.** The game built from the extracted function (its `keygen`/oracle wiring)
+  is a *modeling* step assumed to faithfully represent protocol execution; side channels
+  (timing, faults, memory) are outside the model, as always.

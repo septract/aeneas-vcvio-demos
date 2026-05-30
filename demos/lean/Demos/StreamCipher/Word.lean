@@ -73,7 +73,9 @@ theorem streamGen_advantage [SampleableType S]
   rw [hreal, hideal]
 
 /-- The explicit reduction adversary: distinguish the PRG's output by first XORing in the
-fixed message. It is exactly `A` plus one XOR, so no heavier than `A`. -/
+fixed message. Structurally it calls `A` once after a single XOR; note this efficiency
+observation is *informal* — `prgAdvantage` quantifies over all adversaries and we do not
+formalize a cost/poly-time bound (see the README scope notes). -/
 def reduction (msg : BitVec 64) (A : PRGAdversary (BitVec 64)) : PRGAdversary (BitVec 64) :=
   fun r => A (r ^^^ msg)
 

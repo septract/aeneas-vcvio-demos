@@ -49,6 +49,7 @@ make clean      # remove generated artifacts (keeps the Mathlib build cache)
 | Ratchet step adequacy | `Demos/Ratchet/Step.lean` | `ratchet_split` (64→32+32 loop) | the loop splits a PRG block into (next chain key, message key) (loop invariant) |
 | Ratchet chain (KDF chain) | `Demos/Ratchet/Chain.lean` | `ratchet_split` | the message-key stream is pseudorandom by an `n`-step **hybrid argument** (advantage `≤ Σ` of per-step PRG advantages); asymptotically secure for **polynomial** chain length |
 | Ratchet over real ChaCha20 | `Demos/Ratchet/Chacha.lean` | `chacha20_block` (ChaCha20: 20 ARX rounds) | the ratchet's block generator is the **extracted ChaCha20** (genuine add/xor/rotate, not a memcpy); value adequacy = totality of the ARX code; security = the generic hybrid bound at `G := chachaPure` |
+| Ratchet cost adequacy | `Demos/Ratchet/Cost.lean` | — | the reduction is **efficient relative to `A`** (query bound `≤ i·keyCost + qA`); ratchet secure against the **poly-query adversary class** with the PRG assumption relative to it (efficiency preservation proved) |
 
 ### Top-level theorems (what each demo actually proves)
 
@@ -89,6 +90,17 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   the generic hybrid theorems then instantiate at `G := chachaPure`. So the extracted node now
   performs genuine cryptographic arithmetic, with "ChaCha20 keyed by the chain key is a PRG" as
   the standard, named hardness assumption.
+- **Demo 3 (cost adequacy) — `RatchetCost.ratchet_secure_against_polyQuery`** (conditional),
+  backed by `reduction_queryBound`. This makes the reduction's efficiency a *theorem* and the
+  PRG assumption *relative to an adversary class*. In the pure `ProbComp` model the cost measure
+  is query count to the uniform-sampling oracle (`IsTotalQueryBound`). We prove the reduction
+  makes `≤ i·keyCost + qA` queries (it runs `A` once after `i` key-samples), where `keyCost` is
+  the per-sample cost — a finite constant, established structurally by `exists_totalQueryBound`
+  ("every finite-range computation has a finite query bound") without computing its value. Hence
+  the reductions stay within a *polynomial* query budget (efficiency preservation, proved), and
+  the ratchet is **secure against poly-query distinguishers** assuming `G` is `ε`-secure against
+  that same class — not against all adversaries. This closes the prior "all-adversaries /
+  informal cost" caveat for the query-count model.
 
 Scope caveats on the asymptotic statements, to avoid over-reading them:
 - **Fixed width.** The block/key/output widths are *fixed* across the security parameter
@@ -139,13 +151,17 @@ by Aeneas (ε = 0), the chain **sequencing** is authored in the Lean model, and 
 These are real limitations, stated so the theorems are not over-read. None is hidden inside a
 proof; each is either an explicit premise or an out-of-model assumption.
 
-- **No cost / polynomial-time bound (the main open item).** `prgAdvantage` quantifies over *all*
-  adversaries, with no runtime/query bound. So the reductions' "calls `A` once plus fixed work"
-  is an *informal, structural* observation — **not** a formalized cost bound, and security is
-  **not** stated against a poly-time adversary *class*. Closing this is the "cost adequacy" hinge
-  of `docs/2026-05-29_rough_theory.md` §8; VCVio has the machinery (`secureAgainst isPPT`, the
-  `CostModel` / `QueryBound` layer) but instantiating it here is a substantial, separate effort,
-  left as the next deliberate step rather than attempted superficially.
+- **Cost adequacy — now a *query-count* bound (was the main open item).** The reduction's
+  efficiency is now a theorem (`Demos/Ratchet/Cost.lean`): in the cost measure native to this
+  pure model — query count to the uniform oracle — the reduction makes `≤ i·keyCost + qA`
+  queries and the ratchet is proved secure against the **poly-query adversary class** (the PRG
+  assumption made relative to that class). Two residual honesty notes: (i) the cost measure is
+  *query count*, not wall-clock/circuit time — a `keyCost`-query key-sample is treated as unit
+  per query, which is the standard cost notion for this `ProbComp` model but not a time bound;
+  (ii) `keyCost` (the per-sample query cost) is established as a finite constant structurally
+  (`exists_totalQueryBound`) without computing its value, since the value is irrelevant to the
+  *relative* "`A` + poly overhead" claim. This is the "cost adequacy" hinge of
+  `docs/2026-05-29_rough_theory.md` §8, addressed for the query-count model.
 - **Fixed width.** Key/block widths are constants (32/64 bytes); only the seed space, adversary,
   and chain length scale with the security parameter. ChaCha20 is inherently fixed-width, so the
   *extracted* node cannot scale width; `Chain.lean` is generic over the block type, but the

@@ -11,3 +11,4 @@ import Demos.StreamCipher.ByteArray
 import Demos.Ratchet.Step
 import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
+import Demos.Ratchet.Cost

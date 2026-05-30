@@ -10,6 +10,7 @@ import Demos.StreamCipher.ByteArray
 import Demos.Ratchet.Step
 import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
+import Demos.Ratchet.Cost
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -35,3 +36,10 @@ import Demos.Ratchet.Chacha
 #print axioms RatchetChacha.chacha20_block_total
 #print axioms RatchetChacha.chacha_ratchet_advantage_le_sum
 #print axioms RatchetChacha.chacha_ratchet_secure_asymptotic
+
+-- Demo 3 (cost adequacy): the reduction is efficient relative to the adversary (query bound),
+-- and the ratchet is secure against the poly-query adversary class (PRG assumption made
+-- relative to that class; efficiency preservation proved, not assumed).
+#print axioms RatchetCost.exists_totalQueryBound
+#print axioms RatchetCost.reduction_queryBound
+#print axioms RatchetCost.ratchet_secure_against_polyQuery

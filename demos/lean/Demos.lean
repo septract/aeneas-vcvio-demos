@@ -13,3 +13,4 @@ import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
 import Demos.Ratchet.Cost
 import Demos.Ratchet.ForwardSecrecy
+import Demos.Ratchet.Generic

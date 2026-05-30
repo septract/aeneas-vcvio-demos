@@ -12,6 +12,7 @@ import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
 import Demos.Ratchet.Cost
 import Demos.Ratchet.ForwardSecrecy
+import Demos.Ratchet.Generic
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -51,3 +52,9 @@ import Demos.Ratchet.ForwardSecrecy
 #print axioms RatchetFS.fs_advantage_le_sum
 #print axioms RatchetFS.fs_secure_asymptotic
 #print axioms RatchetFS.chacha_forward_secrecy_asymptotic
+
+-- Demo 3 (width scaling): the hybrid is width-agnostic — proven over an abstract length-doubling
+-- split bijection, so security holds for a family whose key/block width grows with the security
+-- parameter (Chain.lean is the fixed-width instance).
+#print axioms RatchetGeneric.gen_advantage_le_sum
+#print axioms RatchetGeneric.gen_secure_asymptotic_width

@@ -16,7 +16,6 @@ open Aeneas Std Result OracleComp ENNReal PRGScheme RatchetSecurity
 
 namespace RatchetChacha
 
-
 /-- The quarter-round never fails (pure wrapping-add / xor / rotate). The 4-binder
 postcondition matches the tuple arity, so `step*` can advance through a `quarter` *call*
 (introducing the four result words) without unfolding it. -/

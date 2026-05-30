@@ -1,24 +1,28 @@
 /-
-  Demo 3 (cost adequacy) — the hybrid reduction is *efficient relative to the adversary*.
+  Demo 3 (cost adequacy) — the hybrid reduction is efficient relative to the adversary, in the
+  **query-count** cost measure (queries to the uniform-sampling oracle, `IsTotalQueryBound`).
+  This is the cost notion native to the pure `ProbComp` model — *not* a wall-clock/circuit-time
+  bound; read every "efficient" below as "in uniform-sampling query count".
 
   The audit's strongest point was that `prgAdvantage` quantifies over *all* adversaries and the
-  "reduction is no heavier than `A`" remark was informal. This file makes it a theorem, in the
-  only cost measure the pure `ProbComp` model offers: **query count** to the uniform-sampling
-  oracle (`IsTotalQueryBound`).
+  "reduction is no heavier than `A`" remark was informal. This file makes it a theorem.
 
   The reduction is `fun b => redStream G b n i >>= A`: it runs `A` once after sampling `i`
   fresh keys and running a deterministic chain. So its query count is `A`'s plus the cost of `i`
-  key-samples. We prove exactly that: writing `qKey` for the (constant) query cost of one
-  `$ᵗ Key`, the reduction makes at most `i·qKey + qA` queries when `A` makes at most `qA`. With a
-  polynomial chain length the overhead `i·qKey` is polynomial, so the reduction maps poly-query
+  key-samples. We prove exactly that: writing `keyCost` for the query cost of one `$ᵗ Key`, the
+  reduction makes at most `i·keyCost + qA` queries when `A` makes at most `qA`. With a polynomial
+  chain length the overhead `i·keyCost` is polynomial, so the reduction maps poly-query
   adversaries to poly-query adversaries — efficiency preservation. We then restate ratchet
   security against the **poly-query adversary class**, with the PRG assumption made relative to
   that same class (closing the "all adversaries" gap), the per-hop bound now *derived* from
   PRG-security-against-poly-query rather than assumed for each specific reduction.
 
-  `qKey` is taken as a parameter (the query cost of sampling one fixed-size key — manifestly a
-  finite constant); computing its exact value would fight VCVio's `SampleableType` instance
-  internals and is irrelevant to the cost-adequacy argument, which is *relative* to `A`.
+  `keyCost` is a **finite constant proved to exist** by `exists_totalQueryBound` (every
+  finite-range computation has a finite query bound); its exact *value* is left abstract, since
+  computing it would fight VCVio's `SampleableType` instance internals and is irrelevant to the
+  argument, which is *relative* to `A`. (The general lemmas `redStream_queryBound` /
+  `reduction_queryBound` are stated for an arbitrary such bound `qKey`; the concrete `keyCost`
+  instantiates them.)
 -/
 import Demos.Ratchet.Chain
 import VCVio.OracleComp.QueryTracking.QueryBound
@@ -97,8 +101,9 @@ advantage bound (`hbound` of `ratchet_secure_asymptotic`) is then *derived*, not
 /-- **Cost-aware asymptotic security.** Let `A` be a distinguisher family making at most
 `pA(sp)` queries, and `len` a polynomially-bounded chain length (`len sp ≤ pLen(sp)`). If the
 block PRG `G` is `ε`-secure against distinguishers making at most `(pLen·keyCost + pA)(sp)`
-queries — for a negligible `ε` — then the ChaCha-style ratchet's message-key stream is
-pseudorandom (negligible advantage). Each per-step reduction calls `A` once plus `i ≤ len sp`
+queries — for a negligible `ε` — then the ratchet's message-key stream is pseudorandom
+(negligible advantage). (Generic over the block generator `G`; instantiate at the extracted
+ChaCha20 from `Demos/Ratchet/Chacha.lean`.) Each per-step reduction calls `A` once plus `i ≤ len sp`
 key-samples, so it makes `≤ i·keyCost + pA(sp) ≤ (pLen·keyCost + pA)(sp)` queries — inside the
 class `hPRG` covers; that fact is proved here, not assumed. -/
 theorem ratchet_secure_against_polyQuery

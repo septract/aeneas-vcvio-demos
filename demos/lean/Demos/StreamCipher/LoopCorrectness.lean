@@ -12,7 +12,6 @@ open Aeneas Std Result
 
 namespace stream
 
-set_option maxHeartbeats 1000000
 
 /-- The loop computes the pointwise xor on the indices already processed, for all priors. -/
 theorem combine_loop_spec (ks m : Array Std.U8 32#usize) :

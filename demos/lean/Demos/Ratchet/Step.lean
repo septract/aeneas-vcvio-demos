@@ -17,7 +17,6 @@ open Aeneas Std Result
 
 namespace ratchet
 
-
 /-- The loop computes the byte split on the indices already processed, for all priors:
 `ck` accumulates `block[0..i]` and `mk` accumulates `block[32..32+i]`. -/
 theorem ratchet_split_loop_spec (block : Array Std.U8 64#usize) :

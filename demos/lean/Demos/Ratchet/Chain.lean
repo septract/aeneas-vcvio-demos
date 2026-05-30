@@ -25,9 +25,9 @@
   security), not the PRF→stream-PRG path (whose collision argument is unfinished upstream).
 
   Scope (see README "What is deliberately not formalized"): this is Signal's *symmetric* KDF
-  chain only — not the full Double Ratchet. `prgAdvantage` is over *all* adversaries: the
-  reductions' efficiency ("calls `A` once") is an informal observation, not a formalized
-  cost/poly-time bound (the cost-adequacy open item).
+  chain only — not the full Double Ratchet. `prgAdvantage` is over *all* adversaries here; the
+  reductions' efficiency ("calls `A` once") is made a query-count theorem and security is
+  restated against the poly-query adversary class in `Demos/Ratchet/Cost.lean`.
 -/
 import Demos.Ratchet.Step
 import Demos.StreamCipher.ByteArray

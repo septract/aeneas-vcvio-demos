@@ -21,3 +21,12 @@ Do not cheat at tasks. These tasks are meant to demonstrate formal verification 
 - **Hand-editing generated artifacts.** The Aeneas-extracted Lean (and the `.llbc` it comes from) is the trusted link to the Rust source. Do not hand-tweak generated definitions to make downstream proofs easier — fix the source or the proof instead.
 
 If a task genuinely cannot be completed honestly, say so and explain why rather than papering over it.
+
+## Worktrees & parallel agents
+
+Demos are often developed in isolated git worktrees, and **several agents may be working in parallel** — each on its own demo and branch. Be mindful that the checkout you are in may be a worktree (not the main checkout) and that you are probably **not the only one committing to `main`**.
+
+- **Start isolated work** with `scripts/dev-worktree.sh <name>`. It creates `.worktrees/<name>` (gitignored) on branch `<name>` and symlinks the heavy, shared Lean artifacts — `deps/` (toolchain) and `demos/lean/.lake/packages/` (Mathlib et al., ~29 GB total) — from the main checkout. A fresh worktree therefore builds only its own `Demos` library (~2–3 min) **without re-fetching or rebuilding Mathlib**.
+- **Isolated per worktree:** the branch source, `demos/lean/Demos/Extracted/`, and `demos/lean/.lake/build/`. The shared dirs are read-only in practice, so parallel worktrees don't clobber each other. Build/verify exactly as in main: `make` / `make verify`.
+- **Merge discipline:** land a demo's branch into `main` only when `make verify` is green, then `git worktree remove .worktrees/<name>` and `git branch -d <name>`.
+- **Concurrency hygiene:** because others may be committing to `main`, stage your own files explicitly (avoid `git add -A`), prefer working on your demo branch, and `git pull --rebase` before pushing if needed.

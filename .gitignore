@@ -1,6 +1,9 @@
 # Internal planning notes (larger-project / strategy — not pushed)
 /internal/
 
+# Per-demo git worktrees (see scripts/dev-worktree.sh) — never pushed
+/.worktrees/
+
 # Local toolchain / vendored dependencies
 /deps/
 

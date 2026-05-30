@@ -35,6 +35,12 @@ extract: check-deps
 	$(AENEAS) -backend lean -dest "$(EXTRACTED)" "$(SCRATCH)/ratchet.llbc"
 	$(CHARON) rustc --preset=aeneas --dest-file "$(SCRATCH)/chacha.llbc" -- $(RUST)/chacha.rs --crate-type=lib
 	$(AENEAS) -backend lean -dest "$(EXTRACTED)" "$(SCRATCH)/chacha.llbc"
+	$(CHARON) rustc --preset=aeneas --dest-file "$(SCRATCH)/pqxdh.llbc" -- $(RUST)/pqxdh/pqxdh.rs --crate-type=lib
+	$(AENEAS) -backend lean -dest "$(EXTRACTED)" "$(SCRATCH)/pqxdh.llbc"
+	$(CHARON) rustc --preset=aeneas --dest-file "$(SCRATCH)/gf.llbc" -- $(RUST)/spqr/gf.rs --crate-type=lib
+	$(AENEAS) -backend lean -dest "$(EXTRACTED)" "$(SCRATCH)/gf.llbc"
+	$(CHARON) rustc --preset=aeneas --dest-file "$(SCRATCH)/authenticator.llbc" -- $(RUST)/spqr/authenticator.rs --crate-type=lib
+	$(AENEAS) -backend lean -dest "$(EXTRACTED)" "$(SCRATCH)/authenticator.llbc"
 
 ## Extract, then type-check every demo (Mathlib oleans via `lake exe cache get`).
 build: extract

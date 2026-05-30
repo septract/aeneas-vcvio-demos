@@ -14,3 +14,6 @@ import Demos.Ratchet.Chacha
 import Demos.Ratchet.Cost
 import Demos.Ratchet.ForwardSecrecy
 import Demos.Ratchet.Generic
+import Demos.Pqxdh.KeySchedule
+import Demos.Spqr.Gf
+import Demos.Spqr.Authenticator

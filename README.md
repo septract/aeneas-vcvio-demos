@@ -16,6 +16,8 @@ deps/                LOCAL toolchain checkouts (gitignored): aeneas, VCV-io  —
 demos/
   rust/              Rust sources (the only checked-in input to extraction)
     otp.rs  stream.rs  ratchet.rs  chacha.rs
+    pqxdh/pqxdh.rs                     PQXDH key-schedule glue (libsignal HEAD)
+    spqr/gf.rs  spqr/authenticator.rs  SPQR field arithmetic + authenticator glue
   lean/              one Lake project (shares Mathlib across all demos)
     lakefile.toml  lean-toolchain  Demos.lean  Audit.lean
     Demos/
@@ -23,6 +25,8 @@ demos/
       OneTimePad.lean
       StreamCipher/  Word.lean  LoopCorrectness.lean  ByteArray.lean
       Ratchet/       Step.lean  Chain.lean  Chacha.lean  Cost.lean  ForwardSecrecy.lean  Generic.lean
+      Pqxdh/         KeySchedule.lean
+      Spqr/          Gf.lean  Authenticator.lean
 ```
 
 **Source vs. generated.** Only `demos/rust/*.rs` and the hand-written proofs under
@@ -124,6 +128,32 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
 All of the above (and the underlying reductions/correctness) are gated by `make verify`, which
 asserts every headline theorem depends **only** on `[propext, Classical.choice, Quot.sound]` —
 no `sorry`, no `native_decide`, no custom axioms (see `scripts/audit.sh`).
+
+## libsignal protocol nodes (PQXDH & SPQR)
+
+Aeneas-extractable analogs of two real Signal protocol features, written to track the
+**current libsignal source** (`signalapp/libsignal` HEAD `5441a83`,
+`signalapp/SparsePostQuantumRatchet` HEAD `f2589fe`) as closely as the Charon/Aeneas-supported
+Rust fragment allows. These are the **node layer** — the deterministic, in-fragment glue around
+the (external, opaque) crypto primitives — extracted and proved value-adequate / functionally
+correct. They are the foundation the protocol-security demos (the AKE / SCKA results sketched in
+`internal/`) build on; the security games themselves are future work.
+
+| Node | File | Extracted Rust (mirrors) | Property proved |
+|---|---|---|---|
+| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse) — the byte-layout glue the Bhargavan et al. (USENIX'24) re-encapsulation attack lived in |
+| SPQR GF(2¹⁶) arithmetic | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/gf.rs`, the portable path Signal's hax/F\* build verifies) | **value adequacy** (totality) of the genuine carryless multiply + table reduction: `gf_add` is XOR, `gf_mul`/`poly_reduce`/`gf_div` are total `u16` functions — the SPQR analog of the ChaCha node |
+| SPQR authenticator glue | `Demos/Spqr/Authenticator.lean` | `authenticator.rs` (SPQR `authenticator.rs` + `util.rs`) | big-endian epoch encoding is total; the `KDF_AUTH` output splits to the two 32-byte halves; the update IKM is **`root_key ‖ k`** (the documented salt/IKM swap vs. the spec prose); the constant-time comparator leaves its accumulator unchanged on equal MACs |
+
+**What is and isn't here.** The cryptographic primitives — X25519 DH, ML-KEM
+encapsulate/decapsulate, HKDF/HMAC-SHA256, the Reed–Solomon codec's outer layers — are external
+crates and **out of the extraction fragment**; Signal itself marks them `#[hax_lib::opaque]`. We
+extract and prove the *glue around them*: key-schedule byte ordering, domain-separation string
+assembly, codec round-trips, and the field arithmetic. That is deliberately the **error-dense
+layer** (per the roadmap in `internal/`): the published PQXDH attack was a domain-separation bug
+in exactly this glue, not in any primitive. A couple of slice-threaded assemblies
+(`pqxdh_secret_input`'s `put32` copies) and the `inz`-evaluation half of the constant-time MAC
+accept are noted in-file as follow-on obligations.
 
 ## Toolchain (`deps/`, gitignored — built locally, nothing global touched)
 

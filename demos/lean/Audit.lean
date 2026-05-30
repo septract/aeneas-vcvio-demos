@@ -13,6 +13,9 @@ import Demos.Ratchet.Chacha
 import Demos.Ratchet.Cost
 import Demos.Ratchet.ForwardSecrecy
 import Demos.Ratchet.Generic
+import Demos.Pqxdh.KeySchedule
+import Demos.Spqr.Gf
+import Demos.Spqr.Authenticator
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -58,3 +61,27 @@ import Demos.Ratchet.Generic
 -- parameter (Chain.lean is the fixed-width instance).
 #print axioms RatchetGeneric.gen_advantage_le_sum
 #print axioms RatchetGeneric.gen_secure_asymptotic_width
+
+-- PQXDH node: functional correctness of the extracted key-schedule glue — the discontinuity
+-- prefix is all-0xFF, the HKDF-output split is exactly the three 32-byte slices, and
+-- DecodeEC ∘ EncodeEC = id (the spec §2.1 inverse the AD construction relies on).
+#print axioms Pqxdh.secret_prefix_loop_spec
+#print axioms Pqxdh.derive_split_spec
+#print axioms Pqxdh.encode_ec_spec
+#print axioms Pqxdh.decode_encode_roundtrip
+
+-- SPQR node (GF(2^16) field arithmetic): value adequacy (totality) of the genuine carryless
+-- multiply + table reduction Signal's own hax/F* build verifies — gf_add is XOR, gf_mul/
+-- poly_reduce/gf_div are total pure functions on u16.
+#print axioms Spqr.Gf.gf_add_total
+#print axioms Spqr.Gf.poly_reduce_total
+#print axioms Spqr.Gf.gf_mul_total
+#print axioms Spqr.Gf.gf_div_total
+
+-- SPQR node (authenticator glue): big-endian epoch encoding is total; the KDF-output split is
+-- exactly the two 32-byte halves; the update IKM is root_key ‖ k (the documented salt/IKM swap);
+-- and the constant-time comparator leaves its accumulator unchanged on equal inputs.
+#print axioms Spqr.Auth.epoch_to_be_bytes_total
+#print axioms Spqr.Auth.update_split_spec
+#print axioms Spqr.Auth.auth_update_ikm_spec
+#print axioms Spqr.Auth.compare_loop_refl

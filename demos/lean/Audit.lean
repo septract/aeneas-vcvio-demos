@@ -11,6 +11,7 @@ import Demos.Ratchet.Step
 import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
 import Demos.Ratchet.Cost
+import Demos.Ratchet.ForwardSecrecy
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -43,3 +44,10 @@ import Demos.Ratchet.Cost
 #print axioms RatchetCost.exists_totalQueryBound
 #print axioms RatchetCost.reduction_queryBound
 #print axioms RatchetCost.ratchet_secure_against_polyQuery
+
+-- Demo 3 (forward secrecy): the joint (message-key prefix, surviving chain key) is
+-- pseudorandom — compromising a later chain key leaves earlier message keys safe — by the
+-- same n-step hybrid, instantiated at the extracted ChaCha20.
+#print axioms RatchetFS.fs_advantage_le_sum
+#print axioms RatchetFS.fs_secure_asymptotic
+#print axioms RatchetFS.chacha_forward_secrecy_asymptotic

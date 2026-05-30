@@ -15,15 +15,27 @@
   *extracted* node (ChaCha20) is inherently fixed-width, so the committed demo instantiates the
   framework at constant width — the genericity here shows the proof does not depend on that.
 
-  Reuses `RatchetSecurity.prod_uniform_bind` (already generic). Mirrors the tactic structure of
-  `Chain.lean`'s `glue` / `ratchet_advantage_le_sum`.
+  This is the single source of the ratchet hybrid argument: `Chain.lean` instantiates it at the
+  fixed byte-array width (`K := Key`, `B := Blk64`, `split := splitPure`), so its concrete
+  `ratchetPRG` / `reduction` / `ratchet_advantage_le_sum` are defeq aliases of the generic ones.
 -/
-import Demos.Ratchet.Chain
+import VCVio.CryptoFoundations.PRG
+import VCVio.OracleComp.Constructions.SampleableType
+import VCVio.CryptoFoundations.Asymptotics.Negligible
+import Mathlib.Data.Fintype.Vector
 
-open Aeneas Std OracleComp ENNReal PRGScheme
+open OracleComp ENNReal PRGScheme
 open List (Vector)
 
 namespace RatchetGeneric
+
+/-- Sampling a pair uniformly is two independent uniform draws. (Generic helper, shared by the
+fixed-width and width-scaling developments.) -/
+theorem prod_uniform_bind {α β γ : Type} [Fintype α] [Inhabited α] [SampleableType α]
+    [Fintype β] [Inhabited β] [SampleableType β] (g : α × β → ProbComp γ) :
+    (($ᵗ (α × β)) >>= g) = (do let a ← $ᵗ α; let b ← $ᵗ β; g (a, b)) := by
+  show (((·, ·) <$> ($ᵗ α) <*> ($ᵗ β)) >>= g) = _
+  simp [monad_norm]
 
 section FixedWidth
 
@@ -89,7 +101,7 @@ theorem gen_uniformVec_eq (n : ℕ) (A : List.Vector K n → ProbComp Bool) :
   | succ m ih =>
     rw [← probOutput_bind_bijective_uniform_cross (α := K × List.Vector K m)
           (fun p => p.1 ::ᵥ p.2) (gen_cons_bijective m) A true]
-    rw [RatchetSecurity.prod_uniform_bind]
+    rw [prod_uniform_bind]
     simp only [genUniformVec, bind_assoc, pure_bind]
     refine probOutput_bind_congr' ($ᵗ K) true (fun k => ?_)
     exact ih (fun v => A (k ::ᵥ v))
@@ -137,7 +149,7 @@ theorem genGlue (split : B → K × K) (hsplit : Function.Bijective split) (G : 
       rw [hL, hR,
         probOutput_bind_bijective_uniform_cross (α := B) split hsplit
           (fun p : K × K => A (p.2 ::ᵥ genKeystream split G m p.1)) true,
-        RatchetSecurity.prod_uniform_bind]
+        prod_uniform_bind]
     | succ j =>
       rw [show (do let b ← $ᵗ B; genRedStream split G b (m + 1) (j + 1) >>= A)
             = ($ᵗ B) >>= fun b => ($ᵗ K) >>= fun k =>

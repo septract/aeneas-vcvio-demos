@@ -16,7 +16,7 @@
 import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
 
-open Aeneas Std OracleComp ENNReal PRGScheme RatchetSecurity
+open Aeneas Std OracleComp ENNReal PRGScheme RatchetSecurity RatchetGeneric
 
 namespace RatchetFS
 
@@ -54,7 +54,7 @@ def fsReduction (G : Key → Blk64) (J i : ℕ)
 the forward-secrecy output (message keys + final key) of the real chain from `s`. -/
 theorem fsRedStream_real_zero (G : Key → Blk64) (s : Key) (J : ℕ) :
     fsRedStream G (G s) (J + 1) 0 = pure (keystream G (J + 1) s, finalKey G (J + 1) s) := by
-  simp only [fsRedStream, keystream, finalKey, step]
+  simp only [fsRedStream, keystream, finalKey, step, genKeystream, genStep]
 
 /-- **The forward-secrecy hybrid hop.** Idealizing hop `i` (challenge block uniform) gives the
 same output distribution as hop `i+1`'s real experiment. Mirrors `RatchetSecurity.glue`, with
@@ -85,7 +85,7 @@ theorem fsGlue (G : Key → Blk64) :
           prod_uniform_bind]
       cases m with
       | zero =>
-        simp only [keystream, finalKey]
+        simp only [keystream, finalKey, genKeystream]
         rw [probOutput_bind_bind_swap ($ᵗ Key) ($ᵗ Key) (fun a b => A (b ::ᵥ .nil, a)) true]
         rw [show (do let s ← $ᵗ Key; fsRedStream G (G s) 1 1 >>= A)
               = ($ᵗ Key) >>= fun _ => (do let k ← $ᵗ Key; let fin ← $ᵗ Key; A (k ::ᵥ .nil, fin))
@@ -97,7 +97,8 @@ theorem fsGlue (G : Key → Blk64) :
         rw [show (do let s ← $ᵗ Key; fsRedStream G (G s) (m' + 2) 1 >>= A)
               = ($ᵗ Key) >>= fun s => ($ᵗ Key) >>= fun k =>
                   A (k ::ᵥ keystream G (m' + 1) s, finalKey G (m' + 1) s) from by
-              simp only [fsRedStream, keystream, finalKey, step, pure_bind, bind_assoc]]
+              simp only [fsRedStream, keystream, finalKey, step, genKeystream, genStep,
+                pure_bind, bind_assoc]]
     | succ j =>
       rw [show (do let b ← $ᵗ Blk64; fsRedStream G b (m + 1) (j + 1) >>= A)
             = ($ᵗ Blk64) >>= fun b => ($ᵗ Key) >>= fun k =>
@@ -138,8 +139,8 @@ theorem fsRedStream_diag (G : Key → Blk64) (b : Blk64) :
       = (do let v ← uniformVec n; let fin ← $ᵗ Key; pure (v, fin)) := by
   intro n
   induction n with
-  | zero => simp only [fsRedStream, uniformVec, pure_bind]
-  | succ n ih => simp only [fsRedStream, uniformVec, ih, bind_assoc, pure_bind]
+  | zero => simp only [fsRedStream, uniformVec, genUniformVec, pure_bind]
+  | succ n ih => simp only [fsRedStream, uniformVec, genUniformVec, ih, bind_assoc, pure_bind]
 
 /-- **Endpoint (ideal).** Hop-`n`'s real experiment is the ideal experiment: `n` uniform message
 keys together with a uniform final chain key (uniform over `List.Vector Key n × Key`). -/

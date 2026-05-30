@@ -21,6 +21,12 @@ Created 2026-05-29.
 > never needs a length cast, and the crux hop (`glue`) is proven at the `probOutput` level using
 > `probOutput_bind_bijective_uniform_cross` (split-pushforward) + `probOutput_bind_bind_swap`
 > (commute the independent draws), inducting on the length with the continuation generalized.
+>
+> **Subsequently extended** (beyond this plan; see `../README.md`): the block generator was made
+> the *real extracted ChaCha20* (`Chacha.lean`); the reduction's efficiency proven as a
+> query-count bound with security against the poly-query class (`Cost.lean`); *forward secrecy*
+> added (`ForwardSecrecy.lean`); and the hybrid generalized to be *width-agnostic* (`Generic.lean`),
+> of which this fixed-width chain is the instance. So `make verify` now gates 20 headline theorems.
 
 Companions: [rough theory](2026-05-29_rough_theory.md) (esp. §3, §5 "poly-many hops"),
 [the missing remainder](2026-05-29_briefing_missing-remainder.md) (the three-part

@@ -24,6 +24,11 @@ Main risk is mundane but real: **toolchain skew.** VCVio pins Lean v4.28.0;
 Aeneas's Lean backend pins v4.30.0-rc2. Both ride Mathlib, so the demo's real
 cost is aligning them on one toolchain/Mathlib commit, not the math.
 
+> **Update (resolved):** in the built repo both Aeneas and VCVio are pinned to **Lean v4.29.0**
+> (sharing Mathlib v4.29.0), so the skew above is closed. The version figures in this note are
+> the feasibility-time snapshot ("checked 2026-05-29"); see `../README.md` → "Toolchain" for the
+> current pins.
+
 ================================================================================
 
 ## The two tools

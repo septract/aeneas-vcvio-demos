@@ -105,23 +105,21 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   the ratchet is **secure against poly-query distinguishers** assuming `G` is `ε`-secure against
   that same class — not against all adversaries. This closes the prior "all-adversaries /
   informal cost" caveat for the query-count model.
-
-Scope caveats on the asymptotic statements, to avoid over-reading them:
-- **Fixed width.** The block/key/output widths are *fixed* across the security parameter
-  (`BitVec 64` / 32-byte keys / 64-byte blocks at every `sp`); only the PRG's seed space, the
-  adversary, and — in Demo 3 — the *chain length* scale. So "asymptotically secure" means *the
-  fixed-width extracted primitive is a (tight, or in Demo 3 telescoping) reduction to a PRG
-  family* — not a width-scaling cipher. (For Demo 2 the asymptotic step is a rewrite by the
-  tight advantage equality; the cryptographic content lives in `streamGen_advantage`.)
-- **Unbounded-adversary advantage.** VCVio's `prgAdvantage` quantifies over *all* adversaries
-  (no polynomial-time/cost bound). The "no heavier than `A`" note on the reductions is an
-  informal comment, **not** a proved cost bound.
-- **Demo 3, the new axis.** Unlike Demos 1–2, Demo 3's proof *is* a multi-hop path: the chain
-  length `n` scales (polynomially) with the security parameter, the advantage is the **sum** of
-  `n` per-step reductions, and security holds *iff* `n` stays polynomial — the soundness side
-  condition is discharged explicitly, not hidden. The per-step PRG-security premise
-  (`hbound`: each reduction's advantage is bounded by one negligible `ε`) is an authored,
-  named hardness assumption, as is the polynomial chain-length bound.
+- **Demo 3 (forward secrecy) — `RatchetFS.fs_advantage_le_sum` /
+  `RatchetFS.chacha_forward_secrecy_asymptotic`** (conditional). The property that *justifies* a
+  ratchet: an adversary who compromises a later chain key `ck_n` learns nothing about the earlier
+  message keys. Formalized as the strong joint statement that `(keystream G n ck₀, ck_n)` is
+  pseudorandom (`fsGen`) — the message-key prefix looks uniform *even given* the surviving chain
+  key — proven by the same `n`-step hybrid (`fsGlue`) with the final chain key carried along.
+  This is *stronger* than the plain keystream pseudorandomness (projecting away the final key
+  recovers it). Instantiated at the extracted ChaCha20.
+- **Demo 3 (width scaling) — `RatchetGeneric.gen_advantage_le_sum` /
+  `gen_secure_asymptotic_width`** (conditional). The hybrid argument proven over an *abstract*
+  key type `K`, block type `B`, and length-doubling split bijection `B ≃ K × K` — using nothing
+  about the 32/64-byte widths. `gen_secure_asymptotic_width` indexes `K`, `B`, the split, and the
+  block PRG by the security parameter, so the **key/block width may grow with `sp`**; `Chain.lean`
+  is the fixed-width instance (its concrete `ratchetPRG` / `reduction` / `ratchet_advantage_le_sum`
+  are defeq aliases of the generic ones).
 
 All of the above (and the underlying reductions/correctness) are gated by `make verify`, which
 asserts every headline theorem depends **only** on `[propext, Classical.choice, Quot.sound]` —
@@ -155,40 +153,20 @@ by Aeneas (ε = 0), the chain **sequencing** is authored in the Lean model, and 
 These are real limitations, stated so the theorems are not over-read. None is hidden inside a
 proof; each is either an explicit premise or an out-of-model assumption.
 
-- **Cost adequacy — now a *query-count* bound (was the main open item).** The reduction's
-  efficiency is now a theorem (`Demos/Ratchet/Cost.lean`): in the cost measure native to this
-  pure model — query count to the uniform oracle — the reduction makes `≤ i·keyCost + qA`
-  queries and the ratchet is proved secure against the **poly-query adversary class** (the PRG
-  assumption made relative to that class). Two residual honesty notes: (i) the cost measure is
-  *query count*, not wall-clock/circuit time — a `keyCost`-query key-sample is treated as unit
-  per query, which is the standard cost notion for this `ProbComp` model but not a time bound;
-  (ii) `keyCost` (the per-sample query cost) is established as a finite constant structurally
-  (`exists_totalQueryBound`) without computing its value, since the value is irrelevant to the
-  *relative* "`A` + poly overhead" claim. This is the "cost adequacy" hinge of
-  `docs/2026-05-29_rough_theory.md` §8, addressed for the query-count model.
-- **Demo 3 (forward secrecy) — `RatchetFS.fs_advantage_le_sum` /
-  `RatchetFS.chacha_forward_secrecy_asymptotic`** (conditional). The property that *justifies* a
-  ratchet: an adversary who compromises the chain key `ck_n` learns nothing about the earlier
-  message keys. Formalized as the strong joint statement that `(keystream G n ck₀, ck_n)` is
-  pseudorandom (`fsGen`) — the message-key prefix looks uniform *even given* the surviving chain
-  key. Proven by the same `n`-step hybrid (`fsGlue`) with the final chain key carried along;
-  this is *stronger* than the plain keystream pseudorandomness of `Chain.lean` (projecting away
-  the final key recovers it). Instantiated at the extracted ChaCha20.
-- **Demo 3 (width scaling) — `RatchetGeneric.gen_advantage_le_sum` /
-  `gen_secure_asymptotic_width`** (conditional). The hybrid argument, proven over an *abstract*
-  key type `K`, block type `B`, and length-doubling split bijection `B ≃ K × K` — using nothing
-  about the 32/64-byte widths. `gen_secure_asymptotic_width` indexes `K`, `B`, the split, and the
-  block PRG by the security parameter, so the **key/block width may grow with `sp`**. `Chain.lean`
-  is the fixed-width instance (`K := Key`, `B := Blk64`, `split := splitPure`); keeping them
-  separate leaves the audited concrete development undisturbed.
-- **Fixed width — generalized in the proof, fixed in the extracted node.** `Demos/Ratchet/Generic.lean`
-  proves the hybrid over an *abstract* length-doubling split bijection `B ≃ K × K`, with a
-  security theorem (`gen_secure_asymptotic_width`) whose key/block **width is indexed by the
-  security parameter**. So the security argument provably does *not* depend on the fixed width —
-  only the committed *extracted* primitive does: ChaCha20 is inherently fixed-width (256-bit key /
-  512-bit block), so our concrete instance runs at constant width even though the framework
-  supports width-scaling families. (A width-scaling *deployment* would need a family of extracted
-  primitives, one per width — out of scope here.)
+- **Cost measure is query count, not running time.** The cost-adequacy result (`Cost.lean`)
+  bounds the reduction in the cost notion native to the pure `ProbComp` model — number of queries
+  to the uniform-sampling oracle (`IsTotalQueryBound`) — and proves security against the
+  *poly-query* adversary class. That is the relevant cost measure here, but it is **not** a
+  wall-clock/circuit-time bound, and `keyCost` (the per-sample query cost) is established as a
+  finite constant (`exists_totalQueryBound`) without computing its value. The other demos' base
+  advantage (`prgAdvantage`) still quantifies over *all* adversaries — only the ratchet adds the
+  cost-bounded statement. Closing the gap to a genuine time/circuit cost model is the
+  "cost adequacy" hinge of `docs/2026-05-29_rough_theory.md` §8.
+- **The extracted primitive is fixed-width.** The hybrid is proved *width-agnostic*
+  (`Generic.lean`), so the security argument does not depend on the 32/64-byte widths — but the
+  committed *extracted* node (ChaCha20) is inherently fixed-width (256-bit key / 512-bit block),
+  so the concrete demo runs at constant width. A width-scaling *deployment* would need a family
+  of extracted primitives, one per width — out of scope here.
 - **Symmetric KDF chain only — not the full Double Ratchet.** Demo 3 is Signal's *symmetric*
   key-derivation chain (one party advancing message keys). It does **not** cover the asymmetric
   Diffie–Hellman ratchet, out-of-order/skipped messages, header encryption, or two-party session

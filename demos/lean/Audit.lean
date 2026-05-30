@@ -9,6 +9,7 @@ import Demos.StreamCipher.LoopCorrectness
 import Demos.StreamCipher.ByteArray
 import Demos.Ratchet.Step
 import Demos.Ratchet.Chain
+import Demos.Ratchet.Chacha
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -27,3 +28,10 @@ import Demos.Ratchet.Chain
 #print axioms ratchet.ratchet_split_spec
 #print axioms RatchetSecurity.ratchet_advantage_le_sum
 #print axioms RatchetSecurity.ratchet_secure_asymptotic
+
+-- Demo 3 (meaty node): the ratchet's block generator is the real, extracted ChaCha20 block
+-- function. Value adequacy = totality of the ARX code; security = the generic hybrid bound,
+-- now over genuine arithmetic Rust.
+#print axioms RatchetChacha.chacha20_block_total
+#print axioms RatchetChacha.chacha_ratchet_advantage_le_sum
+#print axioms RatchetChacha.chacha_ratchet_secure_asymptotic

@@ -1,0 +1,49 @@
+# Local toolchain / vendored dependencies
+/deps/
+
+# Aeneas/Charon generated artifacts — regenerate with `make extract` (never committed)
+/demos/lean/Demos/Extracted/
+/demos/lean/.build/
+*.llbc
+
+# Lean / Lake build artifacts
+.lake/
+build/
+*.olean
+*.ilean
+*.trace
+
+# Rust / Cargo build artifacts
+target/
+
+# OCaml / Dune build artifacts
+_build/
+*.cmi
+*.cmo
+*.cmx
+*.cmt
+*.cmti
+*.o
+*.a
+*.cma
+*.cmxa
+*.install
+*.merlin
+
+# Coq build artifacts
+*.vo
+*.vok
+*.vos
+*.glob
+.*.aux
+*.cache
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db

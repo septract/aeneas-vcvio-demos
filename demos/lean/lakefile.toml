@@ -1,0 +1,17 @@
+name = "demos"
+defaultTargets = ["Demos"]
+
+# Local Aeneas Lean support library (v4.29.0), built in top-level deps/.
+[[require]]
+name = "aeneas"
+path = "../../deps/aeneas/backends/lean"
+
+# VCVio (v4.29.0), built in top-level deps/. Shares Mathlib v4.29.0 with Aeneas.
+[[require]]
+name = "VCVio"
+path = "../../deps/VCV-io"
+
+# One library, one namespace `Demos`. `Demos.lean` imports every demo, so building
+# `Demos` builds them all, including the generated `Demos.Extracted.*` modules.
+[[lean_lib]]
+name = "Demos"

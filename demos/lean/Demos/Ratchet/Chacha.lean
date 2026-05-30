@@ -16,7 +16,6 @@ open Aeneas Std Result OracleComp ENNReal PRGScheme RatchetSecurity
 
 namespace RatchetChacha
 
-set_option maxHeartbeats 1000000
 
 /-- The quarter-round never fails (pure wrapping-add / xor / rotate). The 4-binder
 postcondition matches the tuple arity, so `step*` can advance through a `quarter` *call*

@@ -17,7 +17,6 @@ open Aeneas Std Result
 
 namespace ratchet
 
-set_option maxHeartbeats 1000000
 
 /-- The loop computes the byte split on the indices already processed, for all priors:
 `ck` accumulates `block[0..i]` and `mk` accumulates `block[32..32+i]`. -/

@@ -8,3 +8,5 @@ import Demos.OneTimePad
 import Demos.StreamCipher.Word
 import Demos.StreamCipher.LoopCorrectness
 import Demos.StreamCipher.ByteArray
+import Demos.Ratchet.Step
+import Demos.Ratchet.Chain

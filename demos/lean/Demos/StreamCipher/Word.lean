@@ -92,7 +92,7 @@ secure: its distinguishing advantage is negligible. This is the honest end-to-en
 that the extracted Rust, used as a stream cipher, is pseudorandom assuming `G` is a PRG. -/
 theorem streamGen_secure_asymptotic {S : ℕ → Type} [∀ sp, SampleableType (S sp)]
     (G : ∀ sp, PRGScheme (S sp) (BitVec 64)) (msg : ℕ → BitVec 64)
-    (A : ∀ sp, PRGAdversary (BitVec 64))
+    (A : ∀ _sp, PRGAdversary (BitVec 64))
     (hG : negligible fun sp => ENNReal.ofReal ((G sp).prgAdvantage (reduction (msg sp) (A sp)))) :
     negligible fun sp => ENNReal.ofReal ((streamGen (G sp) (msg sp)).prgAdvantage (A sp)) := by
   have heq : (fun sp => ENNReal.ofReal ((streamGen (G sp) (msg sp)).prgAdvantage (A sp)))

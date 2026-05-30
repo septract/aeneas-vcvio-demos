@@ -8,6 +8,20 @@ that the theory note keeps flagging as the thing that bites at protocol scale.
 
 Created 2026-05-29.
 
+> **Status (2026-05-29): implemented and `make verify`-green.** Built as planned:
+> `demos/rust/ratchet.rs` (`ratchet_split`), `Demos/Ratchet/Step.lean` (loop-invariant value
+> adequacy), `Demos/Ratchet/Chain.lean` (the PRG-hybrid chain). Headline theorems
+> `RatchetSecurity.ratchet_advantage_le_sum` (telescoping `Σε` bound) and
+> `ratchet_secure_asymptotic` (poly-length ⇒ negligible, via `negligible_polynomial_mul`), plus
+> `ratchet.ratchet_split_spec`, all depend only on `[propext, Classical.choice, Quot.sound]`.
+> Two deviations from the sketch below, both simplifications: (i) bijectivity of the split is
+> proven via an explicit `concat` inverse + surjectivity rather than a cardinality argument
+> (the `Std.Array`/`List.Vector`/`usize` defeq made `Fintype.card` blow the recursion stack);
+> (ii) the hybrid is indexed by a length-recursive `redStream` builder so the assembled vector
+> never needs a length cast, and the crux hop (`glue`) is proven at the `probOutput` level using
+> `probOutput_bind_bijective_uniform_cross` (split-pushforward) + `probOutput_bind_bind_swap`
+> (commute the independent draws), inducting on the length with the continuation generalized.
+
 Companions: [rough theory](2026-05-29_rough_theory.md) (esp. §3, §5 "poly-many hops"),
 [the missing remainder](2026-05-29_briefing_missing-remainder.md) (the three-part
 decomposition this demo is built to illustrate), [Aeneas→VCVio](2026-05-29_briefing_aeneas-to-vcvio.md).

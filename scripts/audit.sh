@@ -7,7 +7,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../demos/lean" || { echo "audit: cannot find demos/lean"; exit 2; }
 
 ALLOWED='propext|Classical.choice|Quot.sound'
-EXPECTED=6   # number of `#print axioms` declarations in Audit.lean
+EXPECTED=9   # number of `#print axioms` declarations in Audit.lean
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

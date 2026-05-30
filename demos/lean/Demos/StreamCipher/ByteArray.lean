@@ -126,7 +126,7 @@ PRG family is secure (negligible advantage against the `reduction`), the cipher 
 secure (negligible distinguishing advantage). The honest end-to-end statement that the
 extracted Rust loop, used as a stream cipher, is pseudorandom assuming `G` is a PRG. -/
 theorem streamGen_secure_asymptotic {S : ℕ → Type} [∀ sp, SampleableType (S sp)]
-    (G : ∀ sp, PRGScheme (S sp) Block) (m : ℕ → Block) (A : ∀ sp, PRGAdversary Block)
+    (G : ∀ sp, PRGScheme (S sp) Block) (m : ℕ → Block) (A : ∀ _sp, PRGAdversary Block)
     (hG : negligible fun sp => ENNReal.ofReal ((G sp).prgAdvantage (reduction (m sp) (A sp)))) :
     negligible fun sp => ENNReal.ofReal ((streamGen (G sp) (m sp)).prgAdvantage (A sp)) := by
   have heq : (fun sp => ENNReal.ofReal ((streamGen (G sp) (m sp)).prgAdvantage (A sp)))

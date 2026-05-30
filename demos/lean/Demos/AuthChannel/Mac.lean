@@ -12,6 +12,8 @@
 import Demos.Extracted.Mac
 import VCVio.CryptoFoundations.MacAlg
 import VCVio.CryptoFoundations.PRF
+import VCVio.OracleComp.Constructions.SampleableType
+import Mathlib.Data.Fintype.Vector
 
 open Aeneas Std Result
 
@@ -19,6 +21,21 @@ namespace AuthMac
 
 /-- The MAC tag space: the native 32-byte Aeneas array (HMAC-SHA256 output / SPQR `MAC_SIZE`). -/
 abbrev Tag := Std.Array Std.U8 32#usize
+
+/-- `U8` is in bijection with `BitVec 8` (it wraps one), giving it `Fintype`/`SampleableType`. -/
+def u8Equiv : Std.U8 ≃ BitVec 8 where
+  toFun x := x.bv
+  invFun b := ⟨b⟩
+  left_inv _ := rfl
+  right_inv _ := rfl
+
+instance : Fintype Std.U8 := Fintype.ofEquiv _ u8Equiv.symm
+instance : SampleableType Std.U8 := SampleableType.ofEquiv u8Equiv.symm
+
+/-- The 32-byte tag space is the native Aeneas array, definitionally `List.Vector U8 32`, so it
+inherits `Fintype` and `SampleableType` (needed for the random-function ideal world). -/
+instance : Fintype Tag := inferInstanceAs (Fintype (List.Vector Std.U8 32))
+instance : SampleableType Tag := inferInstanceAs (SampleableType (List.Vector Std.U8 32))
 
 /-! ## Value adequacy of the extracted `verify` loop -/
 

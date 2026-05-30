@@ -58,6 +58,7 @@ make clean      # remove generated artifacts (keeps the Mathlib build cache)
 | Ratchet cost adequacy | `Demos/Ratchet/Cost.lean` | — | the reduction is **efficient relative to `A`** (query bound `≤ i·keyCost + qA`); ratchet secure against the **poly-query adversary class** with the PRG assumption relative to it (efficiency preservation proved) |
 | Ratchet forward secrecy | `Demos/Ratchet/ForwardSecrecy.lean` | `ratchet_split` (via `Chain`/`Chacha`) | **forward secrecy**: the joint `(message-key prefix, surviving chain key)` is pseudorandom, so compromising `ck_n` leaves the earlier message keys safe — same `n`-step hybrid with the final key carried along; stronger than (and implies) the plain keystream result |
 | Ratchet width scaling | `Demos/Ratchet/Generic.lean` | — | the hybrid is **width-agnostic**: proven over an abstract length-doubling split bijection `B ≃ K × K`, so security holds for a family whose key/block **width grows with the security parameter** (`Chain.lean` is the fixed-width instance) |
+| MAC / message authentication | `Demos/AuthChannel/{Mac,SufCma}.lean` | `mac.verify` (32-byte constant-length tag compare) | first **integrity / active-adversary** demo: the extracted `verify` decides 32-byte tag equality (loop invariant); the canonical PRF-based MAC (the libsignal HMAC shape) is perfectly complete and **UF-CMA-secure by a reduction to PRF security** — `UF_CMA_Advantage ≤ prfAdvantage(reduction) + Pr[reduction vs random function]` |
 
 ### Top-level theorems (what each demo actually proves)
 
@@ -124,6 +125,26 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   block PRG by the security parameter, so the **key/block width may grow with `sp`**; `Chain.lean`
   is the fixed-width instance (its concrete `ratchetPRG` / `reduction` / `ratchet_advantage_le_sum`
   are defeq aliases of the generic ones).
+
+- **Demo 4 (message authentication) — `AuthMac.macUF_le_prfAdvantage_add_RF`** (conditional),
+  backed by the real-world correspondence `prfRealExp_reduction_eq` and value adequacy
+  `verify_spec_pointwise`. The first **integrity / active-adversary** result: a deterministic
+  *canonical* MAC `tag(k,m) = F_k(m)` whose `verify` is the **Aeneas-extracted Rust**
+  byte-comparison (`mac.verify`; value adequacy `verify_spec_pointwise` = it is total and decides
+  32-byte tag equality, via a loop invariant). Instantiated against VCVio's `MacAlg`, it is
+  perfectly complete (`macAlg_perfectlyComplete`) and **UF-CMA-secure by a reduction to PRF
+  security**: `UF_CMA_Advantage(A) ≤ prfAdvantage(reduction A) + Pr[reduction A vs random
+  function]`. The witness is the explicit `reduction` (run the forger, forwarding+logging its tag
+  queries to the PRF oracle, then one verify query); the substantive lemma is the **real-world
+  correspondence** `prfRealExp_reduction_eq` (under the real PRF, the reduction *is* the UF-CMA
+  game), proven via the inductive `simulateQ_prfReal_fwdLog`. This is the **libsignal HMAC shape**
+  — HMAC is a deterministic canonical PRF-MAC, used in PQXDH's encrypt-then-MAC AEAD and SPQR's
+  Ratcheted Authenticator — with "`F` is a PRF" as the standard named assumption (which an
+  HMAC-is-a-PRF demo would discharge down to the SHA-256 compression function). **Scope:** the
+  bound carries a *random-function forgery* term `Pr[reduction vs random function]` — exactly the
+  form of VCVio's own `PRFTagReader.authExp_le_prfAdvantage_add_authRF`; bounding that term by
+  `1/2²⁵⁶` (the information-theoretic step, a random-oracle freshness argument) is the one
+  remaining piece. Constant-time comparison is a timing side channel, out of scope.
 
 All of the above (and the underlying reductions/correctness) are gated by `make verify`, which
 asserts every headline theorem depends **only** on `[propext, Classical.choice, Quot.sound]` —

@@ -17,6 +17,7 @@ import Demos.Pqxdh.KeySchedule
 import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
 import Demos.AuthChannel.Mac
+import Demos.AuthChannel.SufCma
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -92,3 +93,12 @@ import Demos.AuthChannel.Mac
 #print axioms AuthMac.verify_spec_pointwise
 #print axioms AuthMac.verifyB_eq_true_iff
 #print axioms AuthMac.macAlg_perfectlyComplete
+
+-- Demo 4 (UF-CMA reduction): the inductive real-world correspondence (the reduction simulated
+-- through the real PRF equals the MAC game's internal oracle), the resulting equality of the
+-- reduction's real-world acceptance with the MAC UF-CMA advantage, and the honest PRF-reduction
+-- headline — the MAC's UF-CMA advantage is bounded by the reduction's PRF distinguishing
+-- advantage plus its success against a random function.
+#print axioms AuthMac.simulateQ_prfReal_fwdLog
+#print axioms AuthMac.prfRealExp_reduction_eq
+#print axioms AuthMac.macUF_le_prfAdvantage_add_RF

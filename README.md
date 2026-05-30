@@ -1,8 +1,10 @@
-# libsignal-theory
+# aeneas-vcvio-demos
 
 End-to-end demos and notes on connecting **real Rust** to **game-based cryptographic
 security proofs**: lift Rust with **Aeneas** into **Lean**, then prove a standard security
-property in **VCVio** — with no `sorry` and no faked results.
+property in **VCVio** — with no `sorry` and no faked results. The demos are small,
+self-contained crypto building blocks (the kind that show up in real messaging protocols
+such as Signal), each proved end-to-end from extracted Rust.
 
 ## Layout
 

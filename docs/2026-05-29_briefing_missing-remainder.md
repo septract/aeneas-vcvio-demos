@@ -1,4 +1,4 @@
-# Briefing: the missing remainder — what it takes to cover all of Signal
+# Briefing: the missing remainder — nodes, orchestration, and what node-level verification covers
 
 2026-05-29. Companion: [Aeneas→VCVio](2026-05-29_briefing_aeneas-to-vcvio.md).
 
@@ -33,7 +33,7 @@
   honest keygen) and **hardness** (DDH, …) stay authored, and crucially *uncheckable against
   the code* — a too-strong assumption typechecks fine and is where deployments break.
 
-## libsignal is only partially sans-IO (checked against the source)
+## A real implementation is only partially sans-IO (libsignal as the worked example)
 
 - Primitives & ratchet math (`crypto.rs`, `curve`, `kem`, `ratchet`): **pure** → nodes (1).
 - Randomness: **dependency-injected** (`R: Rng + CryptoRng` parameter) → sans-IO-friendly.
@@ -50,7 +50,7 @@ ops**, not the library's outer edge.
 
 - Today: lift (1) faithfully (Aeneas→VCVio), hand-author (2) and (3) as a model, prove
   security on the model. The certified part is (1); (2) and (3) are authored.
-- To "prove libsignal correct" (faithful, every line → intended effect): lift (2) under the
+- To "prove a full implementation correct" (faithful, every line → intended effect; e.g. libsignal): lift (2) under the
   store IO boundary — a **deterministic effectful refinement** (Igloo-style) **integrated
   with VCVio's probabilistic top**. This does not exist as a crypto-endorsed method; it is
   the frontier.

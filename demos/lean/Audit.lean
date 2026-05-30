@@ -102,3 +102,10 @@ import Demos.AuthChannel.SufCma
 #print axioms AuthMac.simulateQ_prfReal_fwdLog
 #print axioms AuthMac.prfRealExp_reduction_eq
 #print axioms AuthMac.macUF_le_prfAdvantage_add_RF
+
+-- Demo 4 (random-function forgery bound): against a random function (the ideal world of the PRF
+-- reduction), the reduction's forgery probability is bounded by `1/|Tag| = 2^-256` — a forgery on
+-- an unqueried message can only succeed by guessing a uniformly random tag. Combined with the
+-- reduction headline, this gives the closed UF-CMA bound `prfAdvantage + 1/|Tag|`.
+#print axioms AuthMac.reduction_RF_le
+#print axioms AuthMac.macUF_le

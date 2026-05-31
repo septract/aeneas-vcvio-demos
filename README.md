@@ -159,8 +159,14 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   replays rejected, genuine forgeries counted) and `sufAdv_eq_ufAdv` (strong and plain advantages
   are *equal* here, proved in **both** directions — the `≤` via the honest-log/determinism argument
   and the MAC-agnostic `≥` via `wasQueried_of_wasQueriedPair`, confirming the game is the genuinely
-  *stronger* notion, not an accidentally weaker or vacuous one). **Scope:** constant-time comparison
-  is a timing side channel, out of scope.
+  *stronger* notion, not an accidentally weaker or vacuous one).
+
+  *Cost adequacy.* The reduction is also *efficient*: `reduction_queryBound` proves a forger making
+  `qA` oracle queries is turned into a PRF-distinguisher making at most `qA + 1` (only `O(1)`,
+  forger-independent overhead — one verification query), via `isTotalQueryBound_run_simulateQ_fwdLogImpl_iff`
+  (the logging forward-oracle preserves query count, the log living in the discarded `WriterT` layer);
+  `reduction_polyQueryBound` packages this for a poly-query forger family (it stays within `pA + 1`).
+  **Scope:** constant-time comparison is a timing side channel, out of scope.
 
 All of the above (and the underlying reductions/correctness) are gated by `make verify`, which
 asserts every headline theorem depends **only** on `[propext, Classical.choice, Quot.sound]` —

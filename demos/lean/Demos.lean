@@ -19,3 +19,4 @@ import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
 import Demos.AuthChannel.Mac
 import Demos.AuthChannel.SufCma
+import Demos.AuthChannel.MacCost

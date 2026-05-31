@@ -18,6 +18,7 @@ import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
 import Demos.AuthChannel.Mac
 import Demos.AuthChannel.SufCma
+import Demos.AuthChannel.MacCost
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -127,3 +128,14 @@ import Demos.AuthChannel.SufCma
 -- accidentally weaker or vacuous one).
 #print axioms AuthMac.suf_gate_iff
 #print axioms AuthMac.sufAdv_eq_ufAdv
+
+-- Demo 4 (cost adequacy): the PRF reduction is efficient relative to the forger, in the
+-- query-count measure (`IsTotalQueryBound`, native to the `OracleComp` model). The logging forward
+-- oracle `fwdLogImpl` preserves query count (`isTotalQueryBound_run_simulateQ_fwdLogImpl_iff` — it
+-- forwards every query 1:1, the log lives in the discarded `WriterT` layer), so the reduction makes
+-- at most `qA + 1` queries when the forger makes `qA` (`reduction_queryBound` — only `O(1)`,
+-- forger-independent overhead: one verification query). `reduction_polyQueryBound` packages this for
+-- a poly-query forger family: it stays inside the poly-query efficiency class (`pA + 1`).
+#print axioms AuthMac.isTotalQueryBound_run_simulateQ_fwdLogImpl_iff
+#print axioms AuthMac.reduction_queryBound
+#print axioms AuthMac.reduction_polyQueryBound

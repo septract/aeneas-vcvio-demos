@@ -197,6 +197,9 @@ layer** (per the roadmap in `internal/`): the published PQXDH attack was a domai
 in exactly this glue, not in any primitive. A couple of slice-threaded assemblies
 (`pqxdh_secret_input`'s `put32` copies) and the `inz`-evaluation half of the constant-time MAC
 accept are noted in-file as follow-on obligations.
+`make verify` checks the *proofs*, not whether the *definitions* model the intended notions — that
+separate trust surface (which security games are reused from VCVio vs defined here, the extraction
+trust, and the named hardness assumptions) is tracked explicitly in [`TRUST.md`](TRUST.md).
 
 ## Toolchain (`deps/`, gitignored — built locally, nothing global touched)
 

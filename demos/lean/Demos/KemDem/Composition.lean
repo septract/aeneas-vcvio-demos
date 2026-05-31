@@ -291,6 +291,28 @@ theorem composed_ind_cpa_le
     (fun pc => probComp_heval_liftProbComp pc)
     (fun mx => probComp_hno_fail mx)
 
+/-- **M3 (end-to-end headline).** Chaining `composed_ind_cpa_le` with the M2 reduction
+`streamDEM_ind_cpa_le_prg`: the composed KEM+DEM public-key encryption's one-time IND-CPA advantage
+bottoms out on **just the KEM's IND-CPA security and the PRG's security** — at most the two KEM
+IND-CPA advantages plus twice the PRG advantage of the explicit final distinguisher. No DEM term
+remains; the DEM (our extracted stream cipher) is fully discharged to the PRG assumption. -/
+theorem composed_ind_cpa_le_prg
+    (kem : KEMScheme (OracleComp unifSpec) S PK SK CKEM)
+    (prg : PRGScheme S Block)
+    (adversary : AsymmEncAlg.IND_CPA_Adv (kem.composeWithDEM (streamDEM prg))) :
+    AsymmEncAlg.IND_CPA_OneTime_biasAdvantage
+        (kem.composeWithDEM (streamDEM prg)) ProbCompRuntime.probComp adversary ≤
+      kem.IND_CPA_Advantage ProbCompRuntime.probComp
+        (kem.composeWithDEM_toKEMLeftReduction (streamDEM prg) adversary) +
+      kem.IND_CPA_Advantage ProbCompRuntime.probComp
+        (kem.composeWithDEM_toKEMRightReduction (streamDEM prg) adversary) +
+      2 * prg.prgAdvantage (demReduction (streamDEM prg)
+        (kem.composeWithDEM_toDEMReduction (streamDEM prg) adversary)) := by
+  have hcomp := composed_ind_cpa_le kem prg adversary
+  have hdem := streamDEM_ind_cpa_le_prg prg
+    (kem.composeWithDEM_toDEMReduction (streamDEM prg) adversary)
+  linarith
+
 end Compose
 
 end Demo5KemDem

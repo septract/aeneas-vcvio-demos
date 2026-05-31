@@ -162,3 +162,7 @@ import Demos.KemDem.Composition
 -- permutation, `encEquiv`), so the guess is a fair coin — hence the DEM bias ≤ 2·PRG advantage. This
 -- discharges the DEM term in `composed_ind_cpa_le` to the PRG assumption (the same one as Demo 2).
 #print axioms Demo5KemDem.streamDEM_ind_cpa_le_prg
+
+-- Demo 5 (end-to-end headline): chaining the two results above — the composed PKE's one-time
+-- IND-CPA advantage bottoms out on just KEM-IND-CPA + PRG (no DEM term remains).
+#print axioms Demo5KemDem.composed_ind_cpa_le_prg

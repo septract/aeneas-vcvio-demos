@@ -110,6 +110,8 @@ import Demos.AuthChannel.MacCost
 -- reduction headline, this gives the closed UF-CMA bound `prfAdvantage + 1/|Tag|`.
 #print axioms AuthMac.reduction_RF_le
 #print axioms AuthMac.macUF_le
+-- The `2^-256` reading of the `(Fintype.card Tag)⁻¹` term above is machine-checked, not informal:
+#print axioms AuthMac.card_Tag
 
 -- Demo 4 (SUF-CMA / strong unforgeability): for the canonical deterministic MAC, strong
 -- unforgeability (pair-freshness) collapses to plain unforgeability — winning the pair-freshness

@@ -14,6 +14,8 @@ import VCVio.CryptoFoundations.MacAlg
 import VCVio.CryptoFoundations.PRF
 import VCVio.OracleComp.Constructions.SampleableType
 import Mathlib.Data.Fintype.Vector
+import Mathlib.Data.Fintype.BigOperators
+import Mathlib.Data.BitVec
 
 open Aeneas Std Result
 
@@ -36,6 +38,17 @@ instance : SampleableType Std.U8 := SampleableType.ofEquiv u8Equiv.symm
 inherits `Fintype` and `SampleableType` (needed for the random-function ideal world). -/
 instance : Fintype Tag := inferInstanceAs (Fintype (List.Vector Std.U8 32))
 instance : SampleableType Tag := inferInstanceAs (SampleableType (List.Vector Std.U8 32))
+
+/-- `Std.U8` has exactly `2^8 = 256` values (it wraps a `BitVec 8`). -/
+theorem card_U8 : Fintype.card Std.U8 = 2 ^ 8 := by
+  rw [Fintype.card_congr u8Equiv, Fintype.card_congr BitVec.equivFin.toEquiv, Fintype.card_fin]
+
+/-- **The tag space has exactly `2^256` elements** (32 independent bytes). This is the
+machine-checked basis for reading the headline `(Fintype.card Tag)⁻¹` security terms as `2^-256`;
+without it that numeric figure would be an informal claim. -/
+theorem card_Tag : Fintype.card Tag = 2 ^ 256 := by
+  show Fintype.card (List.Vector Std.U8 32) = 2 ^ 256
+  rw [card_vector, card_U8, ← pow_mul]
 
 /-! ## Value adequacy of the extracted `verify` loop -/
 

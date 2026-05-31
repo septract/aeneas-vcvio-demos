@@ -82,7 +82,9 @@ Headlines: `ratchet_advantage_le_sum`, `chacha_ratchet_*`, `RatchetCost.*`, `Rat
 | `PRFScheme` / `prfAdvantage`, `prfRealExp`/`prfIdealExp`, lazy `randomOracle` | (T) | VCVio `CryptoFoundations/PRF.lean`, `QueryTracking/*` |
 | `IsTotalQueryBound` (efficiency / cost measure) | (T) | VCVio `QueryBound.lean` (reused from Demo 3) |
 | Constructions: `macAlg` (instance of `MacAlg`), `reduction`, `fwdLogImpl` over extracted `mac.rs` | (C) | value-adequacy (`verify_spec_pointwise`) + reduction-correctness (`prfRealExp_reduction_eq`) pin them |
-| **`SUF_CMA_Exp` / `SUF_CMA_Advantage`** — the strong-unforgeability game | **(C)** ⚠️ | **the one defined-here security definition in the whole repo** — see detailed justification below |
+| **`SUF_CMA_Exp` / `SUF_CMA_Advantage`** — the strong-unforgeability game | **(C)** ⚠️ | **the one defined-here security *game* in the whole repo** (with its supporting `wasQueriedPair`/`macGameCore`) — see detailed justification below |
+| Side condition: `macAlg_perfectlyComplete` assumes `prf.UniformKey` (and `[SampleableType K]`) | **(A)**/note | perfect completeness is stated only for uniform-key PRFs — a benign, standard side condition, but it *is* a hypothesis on a listed headline, so it is surfaced here |
+| `2^-256` numeric reading of the `(Fintype.card Tag)⁻¹` security terms | (T)/checked | **machine-checked** by `card_Tag : Fintype.card Tag = 2^256` (`Mac.lean`, in the audit) — not an informal claim |
 | **"`F` is a PRF"** (the MAC's keyed function, modelling HMAC-SHA256) | **(A)** | standard named assumption; an HMAC-is-a-PRF demo (deferred — see below) would discharge it to the SHA-256 compression function |
 
 Headlines: `verify_spec_pointwise`, `macAlg_perfectlyComplete`, the UF-CMA chain (`simulateQ_prfReal_fwdLog`, `prfRealExp_reduction_eq`, `macUF_le_prfAdvantage_add_RF`, `reduction_RF_le`, `macUF_le`), the SUF-CMA results (`sufAdv_le_ufAdv`, `macSUF_le`, `suf_gate_iff`, `sufAdv_eq_ufAdv`), and the cost bounds (`reduction_queryBound`, `reduction_polyQueryBound`).

@@ -166,3 +166,7 @@ import Demos.KemDem.Composition
 -- Demo 5 (end-to-end headline): chaining the two results above — the composed PKE's one-time
 -- IND-CPA advantage bottoms out on just KEM-IND-CPA + PRG (no DEM term remains).
 #print axioms Demo5KemDem.composed_ind_cpa_le_prg
+
+-- Demo 5 (asymptotic, reusing VCVio's `Negligible`): if the KEM family is IND-CPA-secure and the
+-- PRG family is secure, the composed KEM+DEM PKE family's one-time IND-CPA advantage is negligible.
+#print axioms Demo5KemDem.composed_secure_asymptotic

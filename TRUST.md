@@ -134,6 +134,10 @@ the composed PKE is perfectly correct and its one-time IND-CPA advantage is ≤ 
 the DEM advantage). The DEM term in `composed_ind_cpa_le` is itself discharged to the **PRG**
 assumption by `streamDEM_ind_cpa_le_prg` (M2 — the DEM one-time IND-CPA advantage is ≤ the PRG
 advantage of an explicit reduction), so the composed PKE bottoms out on *KEM IND-CPA* + *PRG* only.
+The asymptotic version `composed_secure_asymptotic` lifts this end-to-end bound into VCVio's
+already-trusted `Negligible` framework (class T, `Asymptotics/Negligible.lean`, as in Demos 2–3):
+negligible KEM and PRG advantages ⇒ negligible composed-PKE advantage. Still **no new game** — only
+the reused advantage notions are indexed by a security parameter.
 
 ---
 

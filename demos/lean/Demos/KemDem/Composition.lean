@@ -313,6 +313,71 @@ theorem composed_ind_cpa_le_prg
     (kem.composeWithDEM_toDEMReduction (streamDEM prg) adversary)
   linarith
 
+/-! ## M3 — asymptotic security (reusing VCVio's `Negligible`)
+
+Indexing the KEM, PRG, and adversary by a security parameter `sp`, the concrete bound
+`composed_ind_cpa_le_prg` lifts to an asymptotic statement in VCVio's already-trusted
+`negligible` framework (exactly as Demos 2–3 do, via `Negligible.lean`): if the KEM family
+is IND-CPA-secure (negligible advantage against the two canonical KEM reductions) and the
+PRG family is secure (negligible advantage against the final distinguisher), then the
+composed KEM+DEM public-key encryption family's one-time IND-CPA advantage is negligible.
+No new security *game* is introduced — every advantage notion is reused verbatim from
+VCVio, keeping Demo 5 on the supervisable side. -/
+theorem composed_secure_asymptotic
+    {S : ℕ → Type} [∀ sp, SampleableType (S sp)]
+    {PK SK CKEM : ℕ → Type}
+    (kem : ∀ sp, KEMScheme (OracleComp unifSpec) (S sp) (PK sp) (SK sp) (CKEM sp))
+    (prg : ∀ sp, PRGScheme (S sp) Block)
+    (adversary : ∀ sp, AsymmEncAlg.IND_CPA_Adv ((kem sp).composeWithDEM (streamDEM (prg sp))))
+    (hkemL : negligible fun sp => ENNReal.ofReal
+      ((kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+        ((kem sp).composeWithDEM_toKEMLeftReduction (streamDEM (prg sp)) (adversary sp))))
+    (hkemR : negligible fun sp => ENNReal.ofReal
+      ((kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+        ((kem sp).composeWithDEM_toKEMRightReduction (streamDEM (prg sp)) (adversary sp))))
+    (hprg : negligible fun sp => ENNReal.ofReal
+      ((prg sp).prgAdvantage (demReduction (streamDEM (prg sp))
+        ((kem sp).composeWithDEM_toDEMReduction (streamDEM (prg sp)) (adversary sp))))) :
+    negligible fun sp => ENNReal.ofReal
+      (AsymmEncAlg.IND_CPA_OneTime_biasAdvantage
+        ((kem sp).composeWithDEM (streamDEM (prg sp))) ProbCompRuntime.probComp
+        (adversary sp)) := by
+  -- Dominate by the (negligible) bound `ofReal(kemL) + ofReal(kemR) + 2 * ofReal(prg)`.
+  refine negligible_of_le (g := fun sp =>
+    (ENNReal.ofReal ((kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+        ((kem sp).composeWithDEM_toKEMLeftReduction (streamDEM (prg sp)) (adversary sp))) +
+      ENNReal.ofReal ((kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+        ((kem sp).composeWithDEM_toKEMRightReduction (streamDEM (prg sp)) (adversary sp)))) +
+      2 * ENNReal.ofReal ((prg sp).prgAdvantage (demReduction (streamDEM (prg sp))
+        ((kem sp).composeWithDEM_toDEMReduction (streamDEM (prg sp)) (adversary sp)))))
+    (fun sp => ?_) ?_
+  · -- Pointwise: push the real bound `composed ≤ kemL + kemR + 2·prg` through `ofReal`.
+    have hbound := composed_ind_cpa_le_prg (kem sp) (prg sp) (adversary sp)
+    calc ENNReal.ofReal _
+        ≤ ENNReal.ofReal
+            (((kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+                ((kem sp).composeWithDEM_toKEMLeftReduction (streamDEM (prg sp)) (adversary sp)) +
+              (kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+                ((kem sp).composeWithDEM_toKEMRightReduction (streamDEM (prg sp)) (adversary sp))) +
+              2 * (prg sp).prgAdvantage (demReduction (streamDEM (prg sp))
+                ((kem sp).composeWithDEM_toDEMReduction (streamDEM (prg sp)) (adversary sp)))) :=
+          ENNReal.ofReal_le_ofReal hbound
+      _ ≤ ENNReal.ofReal
+              ((kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+                ((kem sp).composeWithDEM_toKEMLeftReduction (streamDEM (prg sp)) (adversary sp)) +
+              (kem sp).IND_CPA_Advantage ProbCompRuntime.probComp
+                ((kem sp).composeWithDEM_toKEMRightReduction (streamDEM (prg sp)) (adversary sp))) +
+            ENNReal.ofReal
+              (2 * (prg sp).prgAdvantage (demReduction (streamDEM (prg sp))
+                ((kem sp).composeWithDEM_toDEMReduction (streamDEM (prg sp)) (adversary sp)))) :=
+          ENNReal.ofReal_add_le
+      _ ≤ _ := by
+          rw [ENNReal.ofReal_mul (by norm_num), ENNReal.ofReal_ofNat]
+          exact add_le_add ENNReal.ofReal_add_le le_rfl
+  · -- The dominating family is negligible.
+    exact negligible_add (negligible_add hkemL hkemR)
+      (negligible_const_mul hprg (by simp))
+
 end Compose
 
 end Demo5KemDem

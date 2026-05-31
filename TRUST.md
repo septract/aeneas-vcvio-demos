@@ -113,6 +113,30 @@ makes the notion the right one.
 
 ---
 
+## Demo 5 — KEM/DEM → PKE IND-CPA composition (`Demos/KemDem/Composition.lean`)
+
+Instantiate VCVio's already-proven KEM+DEM → public-key-encryption composition with a real
+extracted-Rust DEM, and chain advantages across the tower. **No new security *game* is defined** —
+every security notion (KEM IND-CPA, DEM one-time IND-CPA, PKE one-time IND-CPA) is reused verbatim
+from VCVio — which keeps the demo entirely on the supervisable side.
+
+| Surface | Class | Notes / precedent |
+|---|---|---|
+| `KEMScheme`/`DEMScheme`/`AsymmEncAlg` IND-CPA games; `composeWithDEM`; the composition bound `ind_cpa_one_time_bias_advantage_compose_with_dem_le`; `perfectlyCorrect_composeWithDEM` | (T) | VCVio `KeyEncapMech`/`DataEncapMech`/`KEMDEM.lean` / `AsymmEncAlg/INDCPA/OneTime.lean`, unchanged |
+| `PRGScheme` / `prgAdvantage` (the assumption the DEM bottoms out on) | (T) | VCVio `CryptoFoundations/PRG.lean` (reused from Demo 2) |
+| Construction `streamDEM` — a one-time DEM whose `encrypt`/`decrypt` are the **Aeneas-extracted** 32-byte stream-cipher XOR (`StreamByteSecurity.enc`, Demo 2's `combine` loop) keyed by a PRG seed | **(C)** | value-linked, **not** a security game; pinned by `streamDEM_perfectlyCorrect` (M1) via the extracted-loop value adequacy `enc_spec`/`combine_spec` and the involution `enc_enc_key` |
+| Runtime-coherence side conditions of the composition bound, discharged for `ProbCompRuntime.probComp` (`probComp_heval_pure`/`_bind`/`_liftProbComp`/`_hno_fail`) | (T)/checked | `probComp.evalDist` is literally `HasEvalSPMF.toSPMF` (a monad hom) and `ProbComp` never fails (`OracleComp` is `HasEvalPMF`) — all `rfl`/short, no assumption |
+| **KEM is IND-CPA-secure** | **(A)** | kept *abstract* (an arbitrary `KEMScheme`; its IND-CPA advantage appears as a term) — deliberately not instantiated, to avoid the lattice layer and any overlap with the PQXDH/SPQR nodes |
+| **PRG security** | **(A)** | the same named assumption as Demo 2, reused (the DEM term is reduced to it in M2) |
+
+Headlines: `streamDEM_perfectlyCorrect` (M1); `composed_correct` and `composed_ind_cpa_le` (M3 —
+the composed PKE is perfectly correct and its one-time IND-CPA advantage is ≤ two KEM advantages +
+the DEM advantage). The DEM term in `composed_ind_cpa_le` is itself discharged to the **PRG**
+assumption by `streamDEM_ind_cpa_le_prg` (M2 — the DEM one-time IND-CPA advantage is ≤ the PRG
+advantage of an explicit reduction), so the composed PKE bottoms out on *KEM IND-CPA* + *PRG* only.
+
+---
+
 ## Deferred — require the team's cryptographers (NOT in the trusted base; no clean in-tool precedent)
 
 These were considered and **intentionally not built**, because they would require defining novel

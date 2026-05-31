@@ -7,7 +7,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../demos/lean" || { echo "audit: cannot find demos/lean"; exit 2; }
 
 ALLOWED='propext|Classical.choice|Quot.sound'
-EXPECTED=48  # number of 'depends on axioms' report lines expected (one per headline theorem)
+EXPECTED=52  # number of 'depends on axioms' report lines expected (one per headline theorem)
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

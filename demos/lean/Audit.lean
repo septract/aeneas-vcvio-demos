@@ -19,6 +19,7 @@ import Demos.Spqr.Authenticator
 import Demos.AuthChannel.Mac
 import Demos.AuthChannel.SufCma
 import Demos.AuthChannel.MacCost
+import Demos.KemDem.Composition
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -141,3 +142,23 @@ import Demos.AuthChannel.MacCost
 #print axioms AuthMac.isTotalQueryBound_run_simulateQ_fwdLogImpl_iff
 #print axioms AuthMac.reduction_queryBound
 #print axioms AuthMac.reduction_polyQueryBound
+
+-- Demo 5 (KEM/DEM → PKE composition): a one-time symmetric DEM whose encryption is the
+-- Aeneas-extracted 32-byte stream-cipher XOR (Demo 2's `combine` loop), keyed by a PRG seed, is
+-- perfectly correct (`streamDEM_perfectlyCorrect` — decryption inverts encryption with probability
+-- 1, via the extracted-loop involution). Composing it with an *abstract* IND-CPA KEM through
+-- VCVio's `composeWithDEM` yields a public-key encryption scheme that is perfectly correct
+-- (`composed_correct`, given KEM correctness) and whose one-time IND-CPA advantage is bounded by two
+-- KEM IND-CPA advantages plus the DEM advantage (`composed_ind_cpa_le` — VCVio's composition bound,
+-- with the four runtime-coherence side conditions discharged for `ProbCompRuntime.probComp`).
+#print axioms Demo5KemDem.streamDEM_perfectlyCorrect
+#print axioms Demo5KemDem.composed_correct
+#print axioms Demo5KemDem.composed_ind_cpa_le
+
+-- Demo 5 (DEM term ⇒ PRG, the substantive reduction): the extracted-stream-cipher DEM's one-time
+-- IND-CPA advantage is bounded by twice the PRG distinguishing advantage of an explicit reduction
+-- (`streamDEM_ind_cpa_le_prg`). When the PRG challenge block is the real keystream the simulation is
+-- the DEM game; when it is uniform, `m_b ⊕ R` is a uniform block independent of `b` (XOR is a
+-- permutation, `encEquiv`), so the guess is a fair coin — hence the DEM bias ≤ 2·PRG advantage. This
+-- discharges the DEM term in `composed_ind_cpa_le` to the PRG assumption (the same one as Demo 2).
+#print axioms Demo5KemDem.streamDEM_ind_cpa_le_prg

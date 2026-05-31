@@ -109,3 +109,21 @@ import Demos.AuthChannel.SufCma
 -- reduction headline, this gives the closed UF-CMA bound `prfAdvantage + 1/|Tag|`.
 #print axioms AuthMac.reduction_RF_le
 #print axioms AuthMac.macUF_le
+
+-- Demo 4 (SUF-CMA / strong unforgeability): for the canonical deterministic MAC, strong
+-- unforgeability (pair-freshness) collapses to plain unforgeability — winning the pair-freshness
+-- game on a queried message would force the forged tag to differ from the unique honest tag
+-- `F_k(msg)`, which `verify` rejects. `sufAdv_le_ufAdv` is that pointwise gate implication (via the
+-- honest-log invariant); `macSUF_le` composes it with the UF-CMA headline to give the same closed
+-- bound `prfAdvantage + 1/|Tag|` for strong unforgeability.
+#print axioms AuthMac.sufAdv_le_ufAdv
+#print axioms AuthMac.macSUF_le
+
+-- Demo 4 (SUF-CMA definitional cross-checks): the SUF-CMA game is defined here (not inherited from
+-- VCVio), so it is a new trust boundary. These machine-checked lemmas pin the new game down: the
+-- gate accepts exactly genuine fresh forgeries (`suf_gate_iff` — replay rejected, correct fresh tag
+-- accepted), and strong unforgeability *equals* plain unforgeability for this canonical MAC
+-- (`sufAdv_eq_ufAdv`, both directions — confirming the game is the genuinely stronger notion, not an
+-- accidentally weaker or vacuous one).
+#print axioms AuthMac.suf_gate_iff
+#print axioms AuthMac.sufAdv_eq_ufAdv

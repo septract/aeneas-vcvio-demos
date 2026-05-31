@@ -55,6 +55,7 @@ noncomputable def ufImpl (prf : PRFScheme K M Tag) (k : K) :
       (WriterT (QueryLog (M →ₒ Tag)) ProbComp) +
     (macAlg prf).taggingOracle k
 
+omit [DecidableEq M] in
 /-- **Real-world correspondence, inductive core.** Simulating the forger through the reduction's
 forwarding oracle and then through the real PRF is the same, value-and-log-by-value-and-log, as
 simulating it directly through the MAC game's oracle with the tag oracle set to `F_k`. -/
@@ -123,8 +124,8 @@ theorem prfRealExp_reduction_eq (prf : PRFScheme K M Tag)
 
 /-- **Step B — combination bound.** The MAC's UF-CMA advantage is bounded by the PRF
 distinguishing advantage of the reduction plus the success probability of the same reduction
-against a random function. This is the honest PRF-reduction headline (the analogue of
-`authExp_le_prfAdvantage_add_authRF`). -/
+against a random function. This is the honest PRF-reduction headline (the same shape as VCVio's
+`PRFTagReader` example, `Examples.authExp_le_prfAdvantage_add_authRF`). -/
 theorem macUF_le_prfAdvantage_add_RF (prf : PRFScheme K M Tag)
     (A : (macAlg prf).UF_CMA_Adversary) :
     ((macAlg prf).UF_CMA_Advantage ProbCompRuntime.probComp A).toReal ≤
@@ -306,12 +307,17 @@ theorem fresh_query_bound (msg : M) (τ : Tag) (b : Bool)
       id_map, show uniformSampleImpl msg = ($ᵗ Tag : ProbComp Tag) from rfl,
       probOutput_uniformSample]
 
+-- The 32-byte `Tag` `Fintype` instance unfolds to a deeply nested `List.Vector U8 32` product,
+-- and the `tsum`/`StateT`-cache elaboration in this proof (the `probOutput_bind_eq_tsum`
+-- decomposition over `(M →ₒ Tag).QueryCache`) drives the default recursion depth past its limit
+-- during whnf/instance synthesis. The bump is purely an elaboration budget — no proof strategy
+-- depends on it — and is scoped to this single declaration.
 set_option maxRecDepth 8000 in
 /-- **Step C — random-function forgery bound.** Against a *random function* (the ideal world of
 the PRF reduction), the distinguisher built by `reduction` accepts with probability at most
 `1/|Tag|`: a forgery on an unqueried message can only succeed by guessing a uniformly random tag.
-This is the analogue of `authIdealExp_eq_zero`, but with the nonzero `1/|Tag|` guessing term that
-the lazy random oracle genuinely contributes. -/
+This is the analogue of `authIdealExp_eq_zero` in VCVio's `PRFTagReader` example, but with the
+nonzero `1/|Tag|` guessing term that the lazy random oracle genuinely contributes. -/
 theorem reduction_RF_le (prf : PRFScheme K M Tag)
     (A : (macAlg prf).UF_CMA_Adversary) :
     (Pr[= true | PRFScheme.prfIdealExp (reduction prf A)]).toReal ≤ (Fintype.card Tag : ℝ)⁻¹ := by
@@ -383,6 +389,280 @@ theorem macUF_le (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
   have h1 := macUF_le_prfAdvantage_add_RF prf A
   have h2 := reduction_RF_le prf A
   linarith
+
+/-! ## Strong unforgeability (SUF-CMA)
+
+The standard *strong* unforgeability game differs from UF-CMA only in the freshness condition on
+the forgery: the adversary wins as long as the returned pair `(msg, τ)` is not *exactly* one the
+tagging oracle already produced — even if `msg` itself was queried (under a different tag). For our
+canonical deterministic MAC `tag k m = F_k(m)`, the tag of a queried message is forced to be
+`F_k(msg)`, so a fresh *pair* on a queried message would need `τ ≠ F_k(msg)`, which `verify` then
+rejects. Hence SUF-CMA collapses to UF-CMA for this MAC, and the same `prfAdvantage + 1/|Tag|`
+bound holds. The definitions below mirror VCVio's `MacAlg.UF_CMA_Exp`/`UF_CMA_Advantage` (they are
+not in VCVio; this is the standard strong-unforgeability notion), specialized to the canonical MAC
+`macAlg prf` and the `ProbComp` runtime. -/
+
+/-- Strong unforgeability: the forgery `(msg, τ)` must be a *fresh pair* — not exactly some
+previously returned `⟨msg, tag⟩` — rather than merely a fresh message. -/
+def wasQueriedPair (log : QueryLog (M →ₒ Tag)) (msg : M) (τ : Tag) : Bool :=
+  decide ((⟨msg, τ⟩ : (_ : M) × Tag) ∈ log)
+
+/-! ### Definitional sanity checks for the SUF-CMA game
+
+`SUF_CMA_Exp` is *not* inherited from VCVio — it is a new security-game definition, hence a new
+trust boundary. The kernel checks the proofs below but cannot check that the *definition* is the
+notion we mean. The following machine-checked lemmas pin the gate down behaviourally, so a reader
+need only confirm three short statements rather than trust the game by inspection. -/
+
+/-- **Pin 1 — semantics of the gate predicate.** `wasQueriedPair` holds for exactly the pairs the
+tagging oracle actually returned: the precise `⟨msg, τ⟩` entry occurs in the log. -/
+@[simp] theorem wasQueriedPair_iff (log : QueryLog (M →ₒ Tag)) (msg : M) (τ : Tag) :
+    wasQueriedPair log msg τ = true ↔ (⟨msg, τ⟩ : (_ : M) × Tag) ∈ log := by
+  simp [wasQueriedPair]
+
+/-- **Pin 2 — pair-freshness is *weaker* than message-freshness (MAC-agnostic).** A queried pair is
+in particular a queried message. This holds for *any* log and mentions no MAC: it guarantees the
+SUF game gives the forger *at least* as many ways to win as the UF game (it also admits the
+same-message/different-tag forgery), so `wasQueriedPair` cannot have accidentally encoded something
+*stronger* than — i.e. not — strong unforgeability. The matching advantage inequality
+`ufAdv_le_sufAdv` is derived from this. -/
+theorem wasQueried_of_wasQueriedPair (log : QueryLog (M →ₒ Tag)) (msg : M) (τ : Tag)
+    (h : wasQueriedPair log msg τ = true) : log.wasQueried msg = true := by
+  rw [wasQueriedPair_iff] at h
+  rw [QueryLog.wasQueried_eq_decide_mem_map_fst]
+  simp only [decide_eq_true_eq, List.mem_map]
+  exact ⟨⟨msg, τ⟩, h, rfl⟩
+
+/-- **Pin 3 — the gate accepts exactly genuine fresh forgeries.** The SUF acceptance condition is
+`true` iff the forged pair was never returned by the oracle *and* the tag is the correct MAC value
+`F_k(msg)`. So a replayed pair (`⟨msg,τ⟩ ∈ log`) is rejected and a fresh, correctly-tagged pair is
+accepted: the gate is neither vacuously false nor trivially true. -/
+theorem suf_gate_iff (prf : PRFScheme K M Tag) (k : K) (msg : M) (τ : Tag)
+    (log : QueryLog (M →ₒ Tag)) :
+    (!wasQueriedPair log msg τ && verifyB (prf.eval k msg) τ) = true ↔
+      ((⟨msg, τ⟩ : (_ : M) × Tag) ∉ log ∧ prf.eval k msg = τ) := by
+  simp only [Bool.and_eq_true, Bool.not_eq_true', wasQueriedPair, decide_eq_false_iff_not,
+    verifyB_eq_true_iff]
+
+/-- **SUF-CMA experiment** for the canonical MAC. Structurally identical to `MacAlg.UF_CMA_Exp`
+(same key, same logged adversary run, same `verified`), except the freshness gate is pair-freshness
+`!wasQueriedPair log msg τ` rather than message-freshness `!log.wasQueried msg`. -/
+noncomputable def SUF_CMA_Exp (prf : PRFScheme K M Tag)
+    (A : (macAlg prf).UF_CMA_Adversary) : SPMF Bool :=
+  ProbCompRuntime.probComp.evalDist do
+    let k ← (macAlg prf).keygen
+    let impl : QueryImpl (unifSpec + (M →ₒ Tag))
+        (WriterT (QueryLog (M →ₒ Tag)) ProbComp) :=
+      (HasQuery.toQueryImpl (spec := unifSpec) (m := ProbComp)).liftTarget
+        (WriterT (QueryLog (M →ₒ Tag)) ProbComp) +
+        (macAlg prf).taggingOracle k
+    let ((msg, τ), log) ← (simulateQ impl A.main).run
+    let verified ← (macAlg prf).verify k msg τ
+    return !wasQueriedPair log msg τ && verified
+
+/-- **SUF-CMA advantage**: the probability of producing a valid forgery on a *fresh pair*. -/
+noncomputable def SUF_CMA_Advantage (prf : PRFScheme K M Tag)
+    (A : (macAlg prf).UF_CMA_Adversary) : ℝ≥0∞ :=
+  Pr[= true | SUF_CMA_Exp prf A]
+
+omit [DecidableEq M] in
+/-- **Honest-log invariant.** Every entry in a log produced by simulating `oa` through the MAC
+game's internal oracle (the base/`unifSpec` oracle plus the tagging oracle at key `k`) has the form
+`⟨m, F_k(m)⟩`: the tag is forced by the deterministic MAC. Proved by induction on `oa`,
+generalizing the accumulated prefix log (template: `fwdLog_cache_log_inv`). The base/`unifSpec`
+(`Sum.inl`) step appends nothing to the log; the tagging-oracle (`Sum.inr`) step appends exactly
+`⟨msg, F_k(msg)⟩`. -/
+theorem ufImpl_honest_log_inv (prf : PRFScheme K M Tag) (k : K) {γ : Type}
+    (oa : OracleComp (unifSpec + (M →ₒ Tag)) γ) :
+    ∀ log₀ : QueryLog (M →ₒ Tag),
+    (∀ e ∈ log₀, e.2 = prf.eval k e.1) →
+    ∀ z ∈ support ((fun p => (p.1, log₀ ++ p.2)) <$> (simulateQ (ufImpl prf k) oa).run),
+    ∀ e ∈ z.2, e.2 = prf.eval k e.1 := by
+  induction oa using OracleComp.inductionOn with
+  | pure x =>
+    intro log₀ hinit z hz e he
+    simp only [simulateQ_pure, WriterT.run_pure', map_pure, support_pure,
+      Set.mem_singleton_iff] at hz
+    subst hz
+    exact hinit e (by simpa using he)
+  | query_bind t f ih =>
+    intro log₀ hinit z hz e he
+    simp only [simulateQ_bind, simulateQ_spec_query, WriterT.run_bind', map_bind,
+      Functor.map_map] at hz
+    rw [mem_support_bind_iff] at hz
+    obtain ⟨x, hx, hz⟩ := hz
+    -- Head step: the head query appends only honest entries to `log₀`.
+    have hhead : ∀ ee ∈ log₀ ++ x.2, ee.2 = prf.eval k ee.1 := by
+      cases t with
+      | inl q =>
+        -- A base query appends an empty log.
+        have key : (ufImpl prf k (Sum.inl q)).run =
+            ((liftM (unifSpec.query q) : ProbComp _) >>= fun u =>
+              pure (u, (∅ : QueryLog (M →ₒ Tag)))) := rfl
+        rw [key] at hx
+        obtain ⟨u, _, hu⟩ := (mem_support_bind_iff _ _ _).1 hx
+        have hxeq : x = (u, ∅) := by simpa using hu
+        subst hxeq
+        intro ee hee
+        exact hinit ee (by simpa using hee)
+      | inr msg =>
+        -- A tagging query appends exactly `⟨msg, F_k msg⟩`.
+        have key : (ufImpl prf k (Sum.inr msg)).run =
+            ((pure (prf.eval k msg) : ProbComp Tag) >>= fun u =>
+              pure (u, ([⟨msg, u⟩] : QueryLog (M →ₒ Tag)))) := rfl
+        rw [key] at hx
+        obtain ⟨u, hu, hxeq⟩ := (mem_support_bind_iff _ _ _).1 hx
+        simp only [support_pure, Set.mem_singleton_iff] at hu
+        subst hu
+        have hxeq' : x = (prf.eval k msg, [⟨msg, prf.eval k msg⟩]) := by simpa using hxeq
+        subst hxeq'
+        intro ee hee
+        simp only [List.mem_append, List.mem_singleton] at hee
+        rcases hee with hee | hee
+        · exact hinit ee hee
+        · subst hee; rfl
+    -- Tail step: rewrite `z` to match the IH form with accumulated log `log₀ ++ x.2`.
+    rw [support_map, Set.mem_image] at hz
+    obtain ⟨p, hp, rfl⟩ := hz
+    refine ih x.1 (log₀ ++ x.2) hhead ((p.1, (log₀ ++ x.2) ++ p.2)) ?_ e ?_
+    · simp only [support_map, Set.mem_image]
+      exact ⟨p, hp, by simp [List.append_assoc]⟩
+    · simpa [List.append_assoc] using he
+
+/-- The shared experiment body of the UF-CMA and SUF-CMA games: sample the key, run the adversary
+through the MAC game's internal oracle (logging tag queries), and return the produced
+`(key, (forgery, log))`. Both games differ from this only in the final Boolean gate applied to its
+output. -/
+noncomputable def macGameCore (prf : PRFScheme K M Tag)
+    (A : (macAlg prf).UF_CMA_Adversary) :
+    ProbComp (K × (M × Tag) × QueryLog (M →ₒ Tag)) := do
+  let k ← (macAlg prf).keygen
+  let w ← (simulateQ (ufImpl prf k) A.main).run
+  pure (k, w)
+
+/-- The UF-CMA experiment is the shared core followed by the message-freshness gate. -/
+theorem UF_CMA_Exp_eq_core (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
+    (macAlg prf).UF_CMA_Exp ProbCompRuntime.probComp A =
+      ProbCompRuntime.probComp.evalDist (macGameCore prf A >>= pure ∘
+        fun p => !p.2.2.wasQueried p.2.1.1 && verifyB (prf.eval p.1 p.2.1.1) p.2.1.2) := by
+  rw [MacAlg.UF_CMA_Exp]
+  refine congrArg ProbCompRuntime.probComp.evalDist ?_
+  simp only [macGameCore, bind_assoc, pure_bind, Function.comp]
+  refine bind_congr (m := ProbComp) fun k => ?_
+  refine bind_congr fun w => ?_
+  rw [macAlg_verify, pure_bind]
+
+/-- The SUF-CMA experiment is the shared core followed by the pair-freshness gate. -/
+theorem SUF_CMA_Exp_eq_core (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
+    SUF_CMA_Exp prf A =
+      ProbCompRuntime.probComp.evalDist (macGameCore prf A >>= pure ∘
+        fun p => !wasQueriedPair p.2.2 p.2.1.1 p.2.1.2 && verifyB (prf.eval p.1 p.2.1.1) p.2.1.2) :=
+    by
+  rw [SUF_CMA_Exp]
+  refine congrArg ProbCompRuntime.probComp.evalDist ?_
+  simp only [macGameCore, bind_assoc, pure_bind, Function.comp]
+  refine bind_congr (m := ProbComp) fun k => ?_
+  refine bind_congr fun w => ?_
+  rw [macAlg_verify, pure_bind]
+
+/-- **SUF ≤ UF.** For the canonical deterministic MAC, strong unforgeability reduces to plain
+unforgeability: the only honest tag of a queried message is `F_k(msg)`, so winning the
+pair-freshness game forces the forged tag on a queried message to differ from `F_k(msg)` — which
+`verify` then rejects. Concretely, the SUF gate pointwise implies the UF gate on the support of the
+shared experiment, by the honest-log invariant `ufImpl_honest_log_inv`. -/
+theorem sufAdv_le_ufAdv (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
+    SUF_CMA_Advantage prf A ≤
+      (macAlg prf).UF_CMA_Advantage ProbCompRuntime.probComp A := by
+  rw [SUF_CMA_Advantage, UF_CMA_Advantage, SUF_CMA_Exp_eq_core, UF_CMA_Exp_eq_core]
+  -- The bridge to `ProbComp` semantics is definitional.
+  have hbridge : ∀ X : ProbComp Bool,
+      Pr[= true | ProbCompRuntime.probComp.evalDist X] = Pr[= true | X] := fun _ => rfl
+  rw [hbridge, hbridge]
+  -- Reduce both `Pr[= true | core >>= pure ∘ g]` to `probEvent (g · = true) core`, then
+  -- apply gate-monotonicity: the SUF gate pointwise implies the UF gate on the core's support.
+  rw [← probEvent_eq_eq_probOutput, ← probEvent_eq_eq_probOutput,
+    probEvent_bind_pure_comp, probEvent_bind_pure_comp]
+  refine probEvent_mono ?_
+  rintro p hp hgS
+  -- Honest-log invariant: every logged entry of the shared core is `⟨m, F_k(m)⟩`.
+  have hlog : ∀ e ∈ p.2.2, e.2 = prf.eval p.1 e.1 := by
+    have hp' : p ∈ support
+        ((macAlg prf).keygen >>= fun k =>
+          (simulateQ (ufImpl prf k) A.main).run >>= fun w => pure (k, w)) := hp
+    rw [mem_support_bind_iff] at hp'
+    obtain ⟨k, _, hp'⟩ := hp'
+    rw [mem_support_bind_iff] at hp'
+    obtain ⟨w, hw, hpw⟩ := hp'
+    simp only [mem_support_pure_iff] at hpw
+    subst hpw
+    intro e he
+    exact ufImpl_honest_log_inv prf k A.main ∅ (by intro e he; simp at he)
+      (w.1, ∅ ++ w.2) (by simpa using hw) e he
+  -- Unpack the SUF gate and derive the UF gate.
+  simp only [Function.comp_apply, Bool.and_eq_true, Bool.not_eq_true', wasQueriedPair,
+    decide_eq_false_iff_not] at hgS ⊢
+  obtain ⟨hpair, hver⟩ := hgS
+  refine ⟨?_, hver⟩
+  -- If `msg` were queried, the logged tag equals `F_k(msg) = τ`, so the pair would be present.
+  rw [QueryLog.wasQueried_eq_decide_mem_map_fst, decide_eq_false_iff_not, List.mem_map]
+  rintro ⟨e, he, hfst⟩
+  have heval : e.2 = prf.eval p.1 e.1 := hlog e he
+  rw [verifyB_eq_true_iff] at hver
+  -- `e.1 = msg` and `e.2 = F_k(msg) = τ`, so `⟨msg, τ⟩ = e ∈ log` — contradiction.
+  apply hpair
+  have : e.2 = p.2.1.2 := by rw [heval, hfst, hver]
+  have hpe : (⟨p.2.1.1, p.2.1.2⟩ : (_ : M) × Tag) = e := by
+    apply Sigma.ext
+    · exact hfst.symm
+    · simp only [heq_eq_eq]; rw [← this]
+  rw [hpe]; exact he
+
+/-- **UF ≤ SUF — the matching sanity direction.** Strong unforgeability is at least as hard to
+achieve as plain unforgeability: every UF forgery (fresh *message*) is a SUF forgery (fresh *pair*).
+The proof uses only `wasQueried_of_wasQueriedPair` — no honest-log invariant, no determinism — so it
+would hold for any MAC, confirming our game is genuinely the *stronger* notion. Together with
+`sufAdv_le_ufAdv` it gives the exact equality `sufAdv_eq_ufAdv`. -/
+theorem ufAdv_le_sufAdv (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
+    (macAlg prf).UF_CMA_Advantage ProbCompRuntime.probComp A ≤ SUF_CMA_Advantage prf A := by
+  rw [SUF_CMA_Advantage, UF_CMA_Advantage, SUF_CMA_Exp_eq_core, UF_CMA_Exp_eq_core]
+  have hbridge : ∀ X : ProbComp Bool,
+      Pr[= true | ProbCompRuntime.probComp.evalDist X] = Pr[= true | X] := fun _ => rfl
+  rw [hbridge, hbridge]
+  rw [← probEvent_eq_eq_probOutput, ← probEvent_eq_eq_probOutput,
+    probEvent_bind_pure_comp, probEvent_bind_pure_comp]
+  refine probEvent_mono ?_
+  rintro p _ hgU
+  rw [Function.comp_apply, Bool.and_eq_true, Bool.not_eq_true'] at hgU
+  obtain ⟨hmsg, hver⟩ := hgU
+  rw [Function.comp_apply, Bool.and_eq_true, Bool.not_eq_true']
+  refine ⟨?_, hver⟩
+  -- contrapositive of `wasQueried_of_wasQueriedPair`: msg fresh ⟹ pair fresh
+  cases hwq : wasQueriedPair p.2.2 p.2.1.1 p.2.1.2 with
+  | false => rfl
+  | true =>
+    rw [wasQueried_of_wasQueriedPair _ _ _ hwq] at hmsg
+    exact absurd hmsg (by decide)
+
+/-- **SUF = UF for the canonical deterministic MAC.** Combining both inequalities: for a MAC with a
+unique valid tag per message, strong and plain unforgeability advantages coincide *exactly*. This is
+the sharp characterization (not just the `≤` used for the bound), and is itself further evidence the
+SUF game is defined correctly. -/
+theorem sufAdv_eq_ufAdv (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
+    SUF_CMA_Advantage prf A = (macAlg prf).UF_CMA_Advantage ProbCompRuntime.probComp A :=
+  _root_.le_antisymm (sufAdv_le_ufAdv prf A) (ufAdv_le_sufAdv prf A)
+
+/-- **Headline SUF-CMA bound.** The canonical PRF-based MAC is *strongly* unforgeable under the
+same bound as plain unforgeability: its SUF-CMA advantage is at most the reduction's PRF
+distinguishing advantage plus the random-function guessing term `1/|Tag| = 2^-256`. This composes
+`sufAdv_le_ufAdv` (strong unforgeability collapses to unforgeability for this deterministic MAC)
+with the existing UF-CMA headline `macUF_le`. -/
+theorem macSUF_le (prf : PRFScheme K M Tag) (A : (macAlg prf).UF_CMA_Adversary) :
+    (SUF_CMA_Advantage prf A).toReal ≤
+      prf.prfAdvantage (reduction prf A) + (Fintype.card Tag : ℝ)⁻¹ := by
+  -- `toReal` is monotone here since the UF advantage is a probability `≤ 1 ≠ ⊤`.
+  have huf_ne_top : (macAlg prf).UF_CMA_Advantage ProbCompRuntime.probComp A ≠ ⊤ :=
+    ne_top_of_le_ne_top one_ne_top (probOutput_le_one)
+  exact _root_.le_trans (ENNReal.toReal_mono huf_ne_top (sufAdv_le_ufAdv prf A)) (macUF_le prf A)
 
 end RF
 

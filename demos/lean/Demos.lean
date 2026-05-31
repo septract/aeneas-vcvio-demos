@@ -21,3 +21,5 @@ import Demos.AuthChannel.Mac
 import Demos.AuthChannel.SufCma
 import Demos.AuthChannel.MacCost
 import Demos.KemDem.Composition
+import Demos.Spqr.States
+import Demos.Crypto.Sha256

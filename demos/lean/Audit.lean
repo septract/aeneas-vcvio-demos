@@ -20,6 +20,8 @@ import Demos.AuthChannel.Mac
 import Demos.AuthChannel.SufCma
 import Demos.AuthChannel.MacCost
 import Demos.KemDem.Composition
+import Demos.Spqr.States
+import Demos.Crypto.Sha256
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -73,6 +75,13 @@ import Demos.KemDem.Composition
 #print axioms Pqxdh.derive_split_spec
 #print axioms Pqxdh.encode_ec_spec
 #print axioms Pqxdh.decode_encode_roundtrip
+-- Full HKDF secret-input byte layout (both paths): 0xFF^32 ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS — the
+-- KDF-input premise the AKE proof rests on (the segment ordering is the BJKS-attack-relevant part).
+#print axioms Pqxdh.pqxdh_secret_input_spec
+#print axioms Pqxdh.pqxdh_secret_input_with_opk_spec
+-- The associated data AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B) (two 0x05-tagged 33-byte keys) — the
+-- transcript-MACed identity binding, the exact construction the BJKS re-encapsulation attack hit.
+#print axioms Pqxdh.associated_data_spec
 
 -- SPQR node (GF(2^16) field arithmetic): value adequacy (totality) of the genuine carryless
 -- multiply + table reduction Signal's own hax/F* build verifies — gf_add is XOR, gf_mul/
@@ -84,11 +93,68 @@ import Demos.KemDem.Composition
 
 -- SPQR node (authenticator glue): big-endian epoch encoding is total; the KDF-output split is
 -- exactly the two 32-byte halves; the update IKM is root_key ‖ k (the documented salt/IKM swap);
--- and the constant-time comparator leaves its accumulator unchanged on equal inputs.
+-- and the constant-time comparator: it leaves its accumulator unchanged on equal inputs
+-- (accept), inz evaluates the bit-twiddle (0↦0, ≠0↦1), and compare REJECTS (nonzero) any tag
+-- that differs at some byte — the unforgeability direction the SCKA authentication argument needs.
 #print axioms Spqr.Auth.epoch_to_be_bytes_total
 #print axioms Spqr.Auth.update_split_spec
 #print axioms Spqr.Auth.auth_update_ikm_spec
 #print axioms Spqr.Auth.compare_loop_refl
+#print axioms Spqr.Auth.inz_spec
+#print axioms Spqr.Auth.compare_reject
+-- The domain-separation string / MAC-input builders are total. mac_ct_data covers the full
+-- 1088-byte ciphertext ct1‖ct2 the authenticator actually MACs (send_ct.rs extends ct1 by ct2).
+#print axioms Spqr.Auth.auth_update_info_total
+#print axioms Spqr.Auth.mac_hdr_data_total
+#print axioms Spqr.Auth.mac_ct_data_total
+
+-- Round 2 — crypto primitive nodes (the construction-tower extraction).
+-- SHA-256: faithful FIPS 180-4 compression (genuine ARX, the hash floor).
+#print axioms Sha256.sha256_compress_total
+-- Variable-length (bounded) multi-block SHA-256: total for `len + 9 ≤ 2048`.
+#print axioms Sha256.sha256_total
+-- Variable-length HMAC / HKDF / AEAD over the multi-block hash — the functionally-identical
+-- (modulo a capacity bound) versions; total for the bounded domain. HMAC is the two-pass
+-- ipad/opad structure the HMAC-is-a-PRF reduction lifts; the AEAD is stream cipher +
+-- encrypt-then-MAC (libsignal crypto.rs) with constant-time verify.
+#print axioms Sha256.hmac_sha256_var_total
+#print axioms Sha256.hkdf_extract_total
+#print axioms Sha256.hkdf_expand_96_total
+#print axioms Sha256.etm_encrypt_var_total
+#print axioms Sha256.etm_decrypt_var_total
+-- SPQR symmetric ratchet step (chain.rs next_key_internal): a 64-byte HKDF-Expand then split into
+-- the next chain key and the emitted output key — the symmetric KDF producing the SCKA output_keys.
+#print axioms Sha256.hkdf_expand_64_total
+#print axioms Sha256.spqr_chain_next_total
+
+-- SPQR Reed-Solomon codec field core: polynomial evaluation (encoder chunk generation),
+-- pointwise add, and scalar multiply over GF(2^16) — all total.
+#print axioms Spqr.Gf.poly_eval_total
+#print axioms Spqr.Gf.poly_add_total
+#print axioms Spqr.Gf.poly_scale_total
+
+-- SPQR Reed-Solomon DECODER kernel: Lagrange interpolation (prepare ∘ mult_xdiff ∘ complete ∘
+-- accumulate) + polynomial evaluation, over fixed [u16;37] coefficient arrays (the V1 bound
+-- MAX_INTERMEDIATE_POLYNOMIAL_DEGREE_V1 + 1). decode_value_at = the reconstruction kernel
+-- (interpolate-then-evaluate); all proved TOTAL for n ≤ 36. NB: the algebraic decode∘encode=id
+-- round-trip the SCKA correctness argument needs is separate future work, not proved here.
+#print axioms Spqr.Gf.mult_xdiff_trailing_total
+#print axioms Spqr.Gf.prepare_total
+#print axioms Spqr.Gf.complete_total
+#print axioms Spqr.Gf.lagrange_interpolate_total
+#print axioms Spqr.Gf.compute_at_total
+#print axioms Spqr.Gf.decode_value_at_total
+
+-- SPQR typestate skeleton (the SCKA construction's transition structure): send/recv are total
+-- pure dispatches over the 11-state machine (next state + emitted payload + output-key timing),
+-- vulnerable_epoch is the total leakage predicate. This is what the SCKA security game binds to;
+-- the crypto (codec/chain/MAC) is the verified primitive nodes, ML-KEM the assumed IND-CCA floor.
+#print axioms Spqr.States.send_step_total
+#print axioms Spqr.States.recv_step_total
+#print axioms Spqr.States.vulnerable_epoch_total
+#print axioms Spqr.States.init_a_total
+#print axioms Spqr.States.init_b_total
+
 -- Demo 4 (message authentication): the extracted MAC `verify` is total and decides tag
 -- equality (value adequacy), its Boolean view decides equality, and the canonical PRF-based
 -- MAC (the libsignal HMAC shape) is perfectly complete — honest tags always verify.

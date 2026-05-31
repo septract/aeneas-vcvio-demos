@@ -17,7 +17,8 @@ demos/
   rust/              Rust sources (the only checked-in input to extraction)
     otp.rs  stream.rs  ratchet.rs  chacha.rs
     pqxdh/pqxdh.rs                     PQXDH key-schedule glue (libsignal HEAD)
-    spqr/gf.rs  spqr/authenticator.rs  SPQR field arithmetic + authenticator glue
+    spqr/gf.rs  spqr/authenticator.rs  SPQR field arith + codec + authenticator glue
+    crypto/sha256.rs                   SHA-256 + HMAC-SHA256 + AEAD (encrypt-then-MAC)
   lean/              one Lake project (shares Mathlib across all demos)
     lakefile.toml  lean-toolchain  Demos.lean  Audit.lean
     Demos/
@@ -27,6 +28,7 @@ demos/
       Ratchet/       Step.lean  Chain.lean  Chacha.lean  Cost.lean  ForwardSecrecy.lean  Generic.lean
       Pqxdh/         KeySchedule.lean
       Spqr/          Gf.lean  Authenticator.lean
+      Crypto/        Sha256.lean
 ```
 
 **Source vs. generated.** Only `demos/rust/*.rs` and the hand-written proofs under
@@ -188,15 +190,75 @@ correct. They are the foundation the protocol-security demos (the AKE / SCKA res
 | SPQR GF(2¹⁶) arithmetic | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/gf.rs`, the portable path Signal's hax/F\* build verifies) | **value adequacy** (totality) of the genuine carryless multiply + table reduction: `gf_add` is XOR, `gf_mul`/`poly_reduce`/`gf_div` are total `u16` functions — the SPQR analog of the ChaCha node |
 | SPQR authenticator glue | `Demos/Spqr/Authenticator.lean` | `authenticator.rs` (SPQR `authenticator.rs` + `util.rs`) | big-endian epoch encoding is total; the `KDF_AUTH` output splits to the two 32-byte halves; the update IKM is **`root_key ‖ k`** (the documented salt/IKM swap vs. the spec prose); the constant-time comparator leaves its accumulator unchanged on equal MACs |
 
-**What is and isn't here.** The cryptographic primitives — X25519 DH, ML-KEM
-encapsulate/decapsulate, HKDF/HMAC-SHA256, the Reed–Solomon codec's outer layers — are external
-crates and **out of the extraction fragment**; Signal itself marks them `#[hax_lib::opaque]`. We
-extract and prove the *glue around them*: key-schedule byte ordering, domain-separation string
-assembly, codec round-trips, and the field arithmetic. That is deliberately the **error-dense
-layer** (per the roadmap in `internal/`): the published PQXDH attack was a domain-separation bug
-in exactly this glue, not in any primitive. A couple of slice-threaded assemblies
-(`pqxdh_secret_input`'s `put32` copies) and the `inz`-evaluation half of the constant-time MAC
-accept are noted in-file as follow-on obligations.
+### Construction-tower primitive nodes
+
+A second round extracts the symmetric-crypto **constructions** the protocol proofs reduce to
+(roadmap rungs D5–D8/D11), so those reductions can be *about extracted Rust* rather than assumed.
+Each is genuine in-fragment code; totality (the ε = 0 obligation) is proved for every entry point.
+
+| Node | File | Extracted Rust (mirrors) | Property proved |
+|---|---|---|---|
+| SHA-256 | `Demos/Crypto/Sha256.lean` | `sha256.rs` (FIPS 180-4 — the `sha2::Sha256` libsignal uses under HMAC/HKDF) | **value adequacy** (totality) of the genuine ARX compression (64-round schedule + rounds + Davies–Meyer feed-forward) and the variable-length multi-block hash — the SHA-256 analog of the ChaCha node; its compression PRF/RO is the floor |
+| HMAC-SHA256 | `Demos/Crypto/Sha256.lean` | `sha256.rs` (RFC 2104) | totality of the **two-pass `outer(opad ‖ inner(ipad ‖ msg))`** — the structure the HMAC-is-a-PRF reduction (D5/D6) lifts from the compression PRF |
+| AEAD (encrypt-then-MAC) | `Demos/Crypto/Sha256.lean` | `sha256.rs` (libsignal `crypto.rs` `aes256_ctr_hmacsha256`) | totality of stream-XOR encryption + **HMAC-over-ciphertext, append-tag, constant-time verify** (the EtM glue, D7/D8); the AES-CTR keystream is the opaque PRP floor |
+| SPQR RS codec core | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/polynomial.rs`) | totality of GF(2¹⁶) **polynomial evaluation** (Horner — the encoder's chunk generation), pointwise add (`Poly::add_assign`), and scalar multiply (`Poly::mult_assign`) |
+| SPQR RS **decoder** | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/polynomial.rs` `lagrange_interpolate`/`compute_at`) | **totality** of the **Lagrange-interpolation reconstruction kernel** (`prepare` ∘ `mult_xdiff` ∘ `complete` ∘ accumulate) + x-power-table evaluation + `decode_value_at`, over fixed `[u16;37]` arrays (the algebraic `decode∘encode = id` round-trip the SCKA correctness argument needs is separate future work) |
+| SPQR chain ratchet KDF | `Demos/Crypto/Sha256.lean` | `sha256.rs` (SPQR `chain.rs` `next_key_internal`) | totality of `spqr_chain_next` = `HKDF(0³², next, (ctr+1)‖label, 64)` split into next-key‖output-key — the symmetric ratchet producing the SCKA `output_key`s |
+| SPQR typestate (SCKA syntax) | `Demos/Spqr/States.lean` | `states.rs` (SPQR `v1/chunked/states.rs`) | totality of the **11-state `send`/`recv` transition graph** + output-key timing + `vulnerable_epoch` — the construction the SCKA game binds to (structure-faithful skeleton; crypto = the nodes above + the ML-KEM floor) |
+
+**What is and isn't here.** The irreducible primitives — X25519 DH, ML-KEM
+encapsulate/decapsulate, AES (as a PRP), and the SHA-256 *compression* (as a PRF/RO) — are the
+floor: assumed, not extracted. (The boundary is the cryptographic *hardness floor*, not anything
+to do with Signal's `#[hax_lib::opaque]` markers — those support its panic-freedom proofs and are
+irrelevant to cryptographic correctness; everything above the floor we extract and reduce.) On top
+of that floor we now extract and prove total: the SHA-256 algorithm itself, HMAC's two-pass, the
+encrypt-then-MAC AEAD glue, the PQXDH/SPQR key-schedule and domain-separation byte layouts, the
+EC codec round-trip, and the GF/RS field-and-polynomial arithmetic. That is deliberately the
+**error-dense layer** (per the roadmap in `internal/`): the published PQXDH attack was a
+domain-separation bug in exactly this glue, not in any primitive.
+
+The SHA-256 / HMAC / HKDF / AEAD vertical now has **variable-length, functionally-identical**
+versions (`sha256`, `hmac_sha256_var`, `hkdf_extract`, `hkdf_expand_96`, `etm_*_var`): the full
+multi-block Merkle–Damgård hash, two-pass HMAC, RFC 5869 extract+expand T-chaining, and
+encrypt-then-MAC over an arbitrary message — bounded only by a fixed capacity (`HASH_CAP`=2048,
+message ≤ 1536), which is the single type-level concession. (Earlier fixed-32-byte illustrative
+versions were removed once these subsumed them.) Remaining
+`[domain-restricted]` items: `decode_ec`'s exactly-33-byte input, arbitrary-length HMAC *keys*
+(>64 bytes; the protocols only use 32), and variable HKDF *output* length (the 96-byte expand
+covers the protocols' uses).
+
+The **SPQR construction tower** for the SCKA game is now complete on the extractable side: the
+Lagrange-interpolation **decoder** (over fixed `[u16;37]` arrays — the `Vec`-based
+`PolyEncoder`/`PolyDecoder` orchestration and protobuf stay out of fragment), the symmetric
+**chain ratchet step**, and the **typestate transition structure** (`send`/`recv`/`vulnerable_epoch`).
+The typestate is a deliberate *structure-faithful skeleton*: the upstream state machine is built on
+`PolyEncoder`/`PolyDecoder` + `Rng`/`Result`/`Box`/traits in every state (all out of fragment), so we
+extract the transition graph, payload/output-key timing, epoch advance, and vulnerability predicate —
+the content the SCKA security game quantifies over — with the cryptographic operations as typed
+boundaries (the verified primitive nodes above, plus ML-KEM as the assumed IND-CCA floor, introduced
+on the VCVio side as a `KeyEncapMech` rather than extracted). Still un-modeled (next rounds): the
+FO-KEM / XEdDSA constructions (D9/D10/D14, the deferred deeper-than-the-floor reduction).
+
+### Correspondence to libsignal — the `XREF` convention
+
+The goal is for each extracted function to be **functionally identical to the upstream code,
+modulo type/representation changes**. Every divergence from libsignal/SPQR HEAD is tagged
+inline at its site so the correspondence log is part of the code (not a separate file that
+drifts), and `grep -rn XREF demos/rust` produces the consolidated ledger. Each tag carries the
+pinned upstream `file:lines @commit`, the upstream construct, and a **class**:
+
+| Class | Meaning |
+|---|---|
+| `[type-only]` | functionally identical to upstream — only types/representation differ (`Vec`→fixed array of the same size, `GF16`→`u16`, `Result`→`Option`, `repr(C)` reinterpret→slice copy, Horner vs. power-table). The proof may treat these as the same function. |
+| `[domain-restricted]` | computes upstream's function only on a **sub-domain** (today: the fixed 32-byte HMAC/AEAD/`oneblock` messages). This is *not yet* functionally identical — a tracked gap, to be closed by the variable-length lift. |
+| `[bug]` | a behavioral difference on the shared domain. None currently open (the audit's one finding — `mac_ct` covering `ct1‖ct2`, not a standalone `ct2` — is fixed). |
+
+What is **not modeled at all** (absent upstream functions/features) is listed in each file's
+header "Correspondence & coverage" block, since an omission has no per-line site. Note: Signal's
+`#[hax_lib::opaque]` markers are about its *panic-freedom* proofs and are **not** used here as a
+boundary — our opaque boundary is the cryptographic **hardness floor**; everything above it we
+extract and reduce.
+
 `make verify` checks the *proofs*, not whether the *definitions* model the intended notions — that
 separate trust surface (which security games are reused from VCVio vs defined here, the extraction
 trust, and the named hardness assumptions) is tracked explicitly in [`TRUST.md`](TRUST.md).

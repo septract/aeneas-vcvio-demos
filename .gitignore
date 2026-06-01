@@ -4,6 +4,9 @@
 # Per-demo git worktrees (see scripts/dev-worktree.sh) — never pushed
 /.worktrees/
 
+# Claude Code local agent/session state — not pushed
+/.claude/
+
 # Local toolchain / vendored dependencies
 /deps/
 

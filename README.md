@@ -11,14 +11,17 @@ such as Signal), each proved end-to-end from extracted Rust.
 ```
 README.md            this file
 Makefile             top-level build (extract → lake build → axiom audit)
+TRUST.md             definitional trust ledger (games reused from VCVio vs defined here; assumptions)
 docs/                conceptual notes (PL-correctness ↔ game-based security, the gaps, …)
 deps/                LOCAL toolchain checkouts (gitignored): aeneas, VCV-io  — see "Toolchain"
+scripts/             audit.sh (the soundness gate `make verify` runs) + dev-worktree.sh
 demos/
   rust/              Rust sources (the only checked-in input to extraction)
-    otp.rs  stream.rs  ratchet.rs  chacha.rs
-    pqxdh/pqxdh.rs                     PQXDH key-schedule glue (libsignal HEAD)
+    otp.rs  stream.rs  ratchet.rs  chacha.rs  mac.rs
+    pqxdh/pqxdh.rs                     PQXDH key-schedule glue (libsignal source)
     spqr/gf.rs  spqr/authenticator.rs  SPQR field arith + codec + authenticator glue
-    crypto/sha256.rs                   SHA-256 + HMAC-SHA256 + AEAD (encrypt-then-MAC)
+    spqr/states.rs                     SPQR typestate transition structure (SCKA syntax)
+    crypto/sha256.rs                   SHA-256 + HMAC + HKDF + AEAD (encrypt-then-MAC) + SPQR chain step
   lean/              one Lake project (shares Mathlib across all demos)
     lakefile.toml  lean-toolchain  Demos.lean  Audit.lean
     Demos/
@@ -26,8 +29,10 @@ demos/
       OneTimePad.lean
       StreamCipher/  Word.lean  LoopCorrectness.lean  ByteArray.lean
       Ratchet/       Step.lean  Chain.lean  Chacha.lean  Cost.lean  ForwardSecrecy.lean  Generic.lean
+      AuthChannel/   Mac.lean  SufCma.lean  MacCost.lean
+      KemDem/        Composition.lean
       Pqxdh/         KeySchedule.lean
-      Spqr/          Gf.lean  Authenticator.lean
+      Spqr/          Gf.lean  Authenticator.lean  States.lean
       Crypto/        Sha256.lean
 ```
 
@@ -60,7 +65,8 @@ make clean      # remove generated artifacts (keeps the Mathlib build cache)
 | Ratchet cost adequacy | `Demos/Ratchet/Cost.lean` | — | the reduction is **efficient relative to `A`** (query bound `≤ i·keyCost + qA`); ratchet secure against the **poly-query adversary class** with the PRG assumption relative to it (efficiency preservation proved) |
 | Ratchet forward secrecy | `Demos/Ratchet/ForwardSecrecy.lean` | `ratchet_split` (via `Chain`/`Chacha`) | **forward secrecy**: the joint `(message-key prefix, surviving chain key)` is pseudorandom, so compromising `ck_n` leaves the earlier message keys safe — same `n`-step hybrid with the final key carried along; stronger than (and implies) the plain keystream result |
 | Ratchet width scaling | `Demos/Ratchet/Generic.lean` | — | the hybrid is **width-agnostic**: proven over an abstract length-doubling split bijection `B ≃ K × K`, so security holds for a family whose key/block **width grows with the security parameter** (`Chain.lean` is the fixed-width instance) |
-| MAC / message authentication | `Demos/AuthChannel/{Mac,SufCma}.lean` | `mac.verify` (32-byte constant-length tag compare) | first **integrity / active-adversary** demo: the extracted `verify` decides 32-byte tag equality (loop invariant); the canonical PRF-based MAC (the libsignal HMAC shape) is perfectly complete and **SUF-CMA-secure (strong unforgeability) by a reduction to PRF security**, closed to `SUF_CMA_Advantage ≤ prfAdvantage(reduction) + 1/\|Tag\|` with `1/\|Tag\| = 2⁻²⁵⁶` |
+| MAC / message authentication | `Demos/AuthChannel/{Mac,SufCma,MacCost}.lean` | `mac.verify` (32-byte constant-length tag compare) | first **integrity / active-adversary** demo: the extracted `verify` decides 32-byte tag equality (loop invariant); the canonical PRF-based MAC (the libsignal HMAC shape) is perfectly complete and **SUF-CMA-secure (strong unforgeability) by a reduction to PRF security**, closed to `SUF_CMA_Advantage ≤ prfAdvantage(reduction) + 1/\|Tag\|` with `1/\|Tag\| = 2⁻²⁵⁶`; the reduction is also proved query-efficient (`MacCost.lean`) |
+| KEM/DEM → PKE composition | `Demos/KemDem/Composition.lean` | `combine` (Demo 2's 32-byte XOR loop, reused as the DEM) | **public-key encryption by composition**: VCVio's KEM+DEM → PKE composition instantiated with a one-time symmetric DEM whose encryption is the **extracted stream-cipher XOR**, keyed by a PRG seed. The DEM is perfectly correct (extracted-loop involution) and the composed PKE is one-time IND-CPA secure, with the headline `composed_ind_cpa_le_prg` bottoming out on just **KEM-IND-CPA + PRG** (the DEM term discharged to PRG, the same assumption as Demo 2); asymptotically negligible via VCVio's `Negligible` |
 
 ### Top-level theorems (what each demo actually proves)
 
@@ -98,9 +104,9 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   `wrapping_add`/`rotate_left`/xor over a 16-word state), not a byte-shuffle. The value-adequacy
   obligation is discharged as **totality** of the extracted ARX code (`chacha20_block_total`),
   defining the pure `chachaPure` that faithfully *is* the extracted function (`chachaPure_spec`);
-  the generic hybrid theorems then instantiate at `G := chachaPure`. So the extracted node now
-  performs genuine cryptographic arithmetic, with "ChaCha20 keyed by the chain key is a PRG" as
-  the standard, named hardness assumption.
+  the generic hybrid theorems then instantiate at `G := chachaPure`. The extracted node performs
+  genuine cryptographic arithmetic, with "ChaCha20 keyed by the chain key is a PRG" as the
+  standard, named hardness assumption.
 - **Demo 3 (cost adequacy) — `RatchetCost.ratchet_secure_against_polyQuery`** (conditional),
   backed by `reduction_queryBound`. This makes the reduction's efficiency a *theorem* and the
   PRG assumption *relative to an adversary class*. In the pure `ProbComp` model the cost measure
@@ -110,8 +116,7 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   ("every finite-range computation has a finite query bound") without computing its value. Hence
   the reductions stay within a *polynomial* query budget (efficiency preservation, proved), and
   the ratchet is **secure against poly-query distinguishers** assuming `G` is `ε`-secure against
-  that same class — not against all adversaries. This closes the prior "all-adversaries /
-  informal cost" caveat for the query-count model.
+  that same class — not against all adversaries.
 - **Demo 3 (forward secrecy) — `RatchetFS.fs_advantage_le_sum` /
   `RatchetFS.chacha_forward_secrecy_asymptotic`** (conditional). The property that *justifies* a
   ratchet: an adversary who compromises a later chain key `ck_n` learns nothing about the earlier
@@ -149,7 +154,7 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   named assumption (which an HMAC-is-a-PRF demo would discharge down to the SHA-256 compression
   function). The intermediate `macUF_le_prfAdvantage_add_RF` (the open-term form, the same shape as
   VCVio's `PRFTagReader` *example*, `authExp_le_prfAdvantage_add_authRF`) and the plain-UF headline
-  `macUF_le` are also retained.
+  `macUF_le` are also proved.
 
   *Trust note on the SUF-CMA game.* Strong unforgeability (freshness on the `(msg, tag)` *pair*) is
   **not** part of VCVio — `SUF_CMA_Exp` is defined here, so it is a new trust boundary that the
@@ -170,6 +175,24 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   `reduction_polyQueryBound` packages this for a poly-query forger family (it stays within `pA + 1`).
   **Scope:** constant-time comparison is a timing side channel, out of scope.
 
+- **Demo 5 (KEM/DEM → PKE composition) — `Demo5KemDem.composed_ind_cpa_le_prg`** and
+  **`composed_secure_asymptotic`** (conditional). The first **public-key** result: it instantiates
+  VCVio's already-proven KEM+DEM → public-key-encryption composition
+  (`KEMScheme.composeWithDEM`) with a concrete one-time symmetric DEM whose encryption is the
+  **Aeneas-extracted 32-byte stream-cipher XOR** (Demo 2's `combine` loop), keyed by a PRG seed.
+  The DEM is perfectly correct — decryption inverts encryption with probability 1 via the extracted
+  loop's involution (`streamDEM_perfectlyCorrect`, on `enc_enc_key`). For an *abstract* IND-CPA KEM
+  the composed PKE is one-time IND-CPA secure with `composed_ind_cpa_le` (VCVio's composition bound:
+  two KEM advantages + the DEM advantage, the four runtime-coherence side conditions discharged for
+  `ProbCompRuntime.probComp`). The substantive step `streamDEM_ind_cpa_le_prg` then bounds the DEM's
+  advantage by twice an explicit PRG reduction's — when the PRG block is the real keystream the
+  simulation is the DEM game, and when it is uniform `m_b ⊕ R` is uniform independent of `b` (XOR is
+  a permutation, `encEquiv`), so the guess is a fair coin. Chaining the two gives the end-to-end
+  headline `composed_ind_cpa_le_prg`, in which **no DEM term remains** — the composed PKE's one-time
+  IND-CPA advantage bottoms out on **KEM-IND-CPA + PRG** (the same PRG assumption as Demo 2). No new
+  security *game* is defined — every notion (KEM/DEM/PKE IND-CPA) is reused verbatim from VCVio, so
+  this result stays entirely on the supervisable side (see `TRUST.md`).
+
 All of the above (and the underlying reductions/correctness) are gated by `make verify`, which
 asserts every headline theorem depends **only** on `[propext, Classical.choice, Quot.sound]` —
 no `sorry`, no `native_decide`, no custom axioms (see `scripts/audit.sh`).
@@ -177,30 +200,31 @@ no `sorry`, no `native_decide`, no custom axioms (see `scripts/audit.sh`).
 ## libsignal protocol nodes (PQXDH & SPQR)
 
 Aeneas-extractable analogs of two real Signal protocol features, written to track the
-**current libsignal source** (`signalapp/libsignal` HEAD `5441a83`,
-`signalapp/SparsePostQuantumRatchet` HEAD `f2589fe`) as closely as the Charon/Aeneas-supported
-Rust fragment allows. These are the **node layer** — the deterministic, in-fragment glue around
+**pinned libsignal / SPQR sources** (`signalapp/libsignal` `5441a83` = `v0.94.3`,
+`signalapp/SparsePostQuantumRatchet` `f2589fe` = `v1.5.1`; full pins in the *Toolchain &
+reproducibility* section below) as closely as the Charon/Aeneas-supported Rust fragment allows. These are the **node layer** — the deterministic, in-fragment glue around
 the (external, opaque) crypto primitives — extracted and proved value-adequate / functionally
-correct. They are the foundation the protocol-security demos (the AKE / SCKA results sketched in
-`internal/`) build on; the security games themselves are future work.
+correct. They are the foundation for the eventual protocol-security results — post-quantum key
+agreement (an AKE / session-key-indistinguishability game for PQXDH) and secure-channel /
+ratchet security (an SCKA game for SPQR) — whose security games themselves are future work.
 
 | Node | File | Extracted Rust (mirrors) | Property proved |
 |---|---|---|---|
-| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse) — the byte-layout glue the Bhargavan et al. (USENIX'24) re-encapsulation attack lived in |
+| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse); the **full HKDF secret-input byte layout** (both paths) `0xFF³² ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS`, and the **associated data** `AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B)` — the byte-layout glue the Bhargavan et al. (USENIX'24) re-encapsulation attack lived in |
 | SPQR GF(2¹⁶) arithmetic | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/gf.rs`, the portable path Signal's hax/F\* build verifies) | **value adequacy** (totality) of the genuine carryless multiply + table reduction: `gf_add` is XOR, `gf_mul`/`poly_reduce`/`gf_div` are total `u16` functions — the SPQR analog of the ChaCha node |
-| SPQR authenticator glue | `Demos/Spqr/Authenticator.lean` | `authenticator.rs` (SPQR `authenticator.rs` + `util.rs`) | big-endian epoch encoding is total; the `KDF_AUTH` output splits to the two 32-byte halves; the update IKM is **`root_key ‖ k`** (the documented salt/IKM swap vs. the spec prose); the constant-time comparator leaves its accumulator unchanged on equal MACs |
+| SPQR authenticator glue | `Demos/Spqr/Authenticator.lean` | `authenticator.rs` (SPQR `authenticator.rs` + `util.rs`) | big-endian epoch encoding is total; the `KDF_AUTH` output splits to the two 32-byte halves; the update IKM is **`root_key ‖ k`** (the documented salt/IKM swap vs. the spec prose); the constant-time comparator leaves its accumulator unchanged on equal MACs **and rejects (returns nonzero on) any tag that differs at some byte** (`compare_reject`/`inz` — the unforgeability direction); the MAC-input builders (`mac_hdr`, `mac_ct` over the full `ct1‖ct2`) are total |
 
 ### Construction-tower primitive nodes
 
-A second round extracts the symmetric-crypto **constructions** the protocol proofs reduce to
-(roadmap rungs D5–D8/D11), so those reductions can be *about extracted Rust* rather than assumed.
-Each is genuine in-fragment code; totality (the ε = 0 obligation) is proved for every entry point.
+These nodes are the symmetric-crypto **constructions** the protocol proofs reduce to, extracted so
+those reductions can be *about extracted Rust* rather than assumed. Each is genuine in-fragment
+code; totality (the ε = 0 obligation) is proved for every entry point.
 
 | Node | File | Extracted Rust (mirrors) | Property proved |
 |---|---|---|---|
 | SHA-256 | `Demos/Crypto/Sha256.lean` | `sha256.rs` (FIPS 180-4 — the `sha2::Sha256` libsignal uses under HMAC/HKDF) | **value adequacy** (totality) of the genuine ARX compression (64-round schedule + rounds + Davies–Meyer feed-forward) and the variable-length multi-block hash — the SHA-256 analog of the ChaCha node; its compression PRF/RO is the floor |
-| HMAC-SHA256 | `Demos/Crypto/Sha256.lean` | `sha256.rs` (RFC 2104) | totality of the **two-pass `outer(opad ‖ inner(ipad ‖ msg))`** — the structure the HMAC-is-a-PRF reduction (D5/D6) lifts from the compression PRF |
-| AEAD (encrypt-then-MAC) | `Demos/Crypto/Sha256.lean` | `sha256.rs` (libsignal `crypto.rs` `aes256_ctr_hmacsha256`) | totality of stream-XOR encryption + **HMAC-over-ciphertext, append-tag, constant-time verify** (the EtM glue, D7/D8); the AES-CTR keystream is the opaque PRP floor |
+| HMAC-SHA256 | `Demos/Crypto/Sha256.lean` | `sha256.rs` (RFC 2104) | totality of the **two-pass `outer(opad ‖ inner(ipad ‖ msg))`** — the structure the HMAC-is-a-PRF reduction lifts from the compression PRF |
+| AEAD (encrypt-then-MAC) | `Demos/Crypto/Sha256.lean` | `sha256.rs` (libsignal `crypto.rs` `aes256_ctr_hmacsha256`) | totality of stream-XOR encryption + **HMAC-over-ciphertext, append-tag, constant-time verify** (the EtM glue); the AES-CTR keystream is the opaque PRP floor |
 | SPQR RS codec core | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/polynomial.rs`) | totality of GF(2¹⁶) **polynomial evaluation** (Horner — the encoder's chunk generation), pointwise add (`Poly::add_assign`), and scalar multiply (`Poly::mult_assign`) |
 | SPQR RS **decoder** | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/polynomial.rs` `lagrange_interpolate`/`compute_at`) | **totality** of the **Lagrange-interpolation reconstruction kernel** (`prepare` ∘ `mult_xdiff` ∘ `complete` ∘ accumulate) + x-power-table evaluation + `decode_value_at`, over fixed `[u16;37]` arrays (the algebraic `decode∘encode = id` round-trip the SCKA correctness argument needs is separate future work) |
 | SPQR chain ratchet KDF | `Demos/Crypto/Sha256.lean` | `sha256.rs` (SPQR `chain.rs` `next_key_internal`) | totality of `spqr_chain_next` = `HKDF(0³², next, (ctr+1)‖label, 64)` split into next-key‖output-key — the symmetric ratchet producing the SCKA `output_key`s |
@@ -211,23 +235,22 @@ encapsulate/decapsulate, AES (as a PRP), and the SHA-256 *compression* (as a PRF
 floor: assumed, not extracted. (The boundary is the cryptographic *hardness floor*, not anything
 to do with Signal's `#[hax_lib::opaque]` markers — those support its panic-freedom proofs and are
 irrelevant to cryptographic correctness; everything above the floor we extract and reduce.) On top
-of that floor we now extract and prove total: the SHA-256 algorithm itself, HMAC's two-pass, the
+of that floor we extract and prove total: the SHA-256 algorithm itself, HMAC's two-pass, the
 encrypt-then-MAC AEAD glue, the PQXDH/SPQR key-schedule and domain-separation byte layouts, the
 EC codec round-trip, and the GF/RS field-and-polynomial arithmetic. That is deliberately the
-**error-dense layer** (per the roadmap in `internal/`): the published PQXDH attack was a
-domain-separation bug in exactly this glue, not in any primitive.
+**error-dense layer**: the published PQXDH attack was a domain-separation bug in exactly this
+glue, not in any primitive.
 
-The SHA-256 / HMAC / HKDF / AEAD vertical now has **variable-length, functionally-identical**
-versions (`sha256`, `hmac_sha256_var`, `hkdf_extract`, `hkdf_expand_96`, `etm_*_var`): the full
+The SHA-256 / HMAC / HKDF / AEAD vertical is **variable-length and functionally identical**
+(`sha256`, `hmac_sha256_var`, `hkdf_extract`, `hkdf_expand_96`, `etm_*_var`): the full
 multi-block Merkle–Damgård hash, two-pass HMAC, RFC 5869 extract+expand T-chaining, and
 encrypt-then-MAC over an arbitrary message — bounded only by a fixed capacity (`HASH_CAP`=2048,
-message ≤ 1536), which is the single type-level concession. (Earlier fixed-32-byte illustrative
-versions were removed once these subsumed them.) Remaining
-`[domain-restricted]` items: `decode_ec`'s exactly-33-byte input, arbitrary-length HMAC *keys*
-(>64 bytes; the protocols only use 32), and variable HKDF *output* length (the 96-byte expand
-covers the protocols' uses).
+message ≤ 1536), which is the single type-level concession. Domain restrictions: `decode_ec`'s
+exactly-33-byte input (the one inline `[domain-restricted]` tag site), plus two coverage-level
+concessions noted in the file headers — arbitrary-length HMAC *keys* (>64 bytes; the protocols
+only use 32) and variable HKDF *output* length (the 96-byte expand covers the protocols' uses).
 
-The **SPQR construction tower** for the SCKA game is now complete on the extractable side: the
+The **SPQR construction tower** for the SCKA game is complete on the extractable side: the
 Lagrange-interpolation **decoder** (over fixed `[u16;37]` arrays — the `Vec`-based
 `PolyEncoder`/`PolyDecoder` orchestration and protobuf stay out of fragment), the symmetric
 **chain ratchet step**, and the **typestate transition structure** (`send`/`recv`/`vulnerable_epoch`).
@@ -236,8 +259,8 @@ The typestate is a deliberate *structure-faithful skeleton*: the upstream state 
 extract the transition graph, payload/output-key timing, epoch advance, and vulnerability predicate —
 the content the SCKA security game quantifies over — with the cryptographic operations as typed
 boundaries (the verified primitive nodes above, plus ML-KEM as the assumed IND-CCA floor, introduced
-on the VCVio side as a `KeyEncapMech` rather than extracted). Still un-modeled (next rounds): the
-FO-KEM / XEdDSA constructions (D9/D10/D14, the deferred deeper-than-the-floor reduction).
+on the VCVio side as a `KeyEncapMech` rather than extracted). Still un-modeled: the
+FO-KEM / XEdDSA constructions (the deferred deeper-than-the-floor reduction).
 
 ### Correspondence to libsignal — the `XREF` convention
 
@@ -250,29 +273,42 @@ pinned upstream `file:lines @commit`, the upstream construct, and a **class**:
 | Class | Meaning |
 |---|---|
 | `[type-only]` | functionally identical to upstream — only types/representation differ (`Vec`→fixed array of the same size, `GF16`→`u16`, `Result`→`Option`, `repr(C)` reinterpret→slice copy, Horner vs. power-table). The proof may treat these as the same function. |
-| `[domain-restricted]` | computes upstream's function only on a **sub-domain** (today: the fixed 32-byte HMAC/AEAD/`oneblock` messages). This is *not yet* functionally identical — a tracked gap, to be closed by the variable-length lift. |
-| `[bug]` | a behavioral difference on the shared domain. None currently open (the audit's one finding — `mac_ct` covering `ct1‖ct2`, not a standalone `ct2` — is fixed). |
+| `[domain-restricted]` | computes upstream's function only on a **sub-domain**. One site: `decode_ec`'s exactly-`[u8;33]` input, vs. upstream's `&[u8]` of length ≥33 that tolerates trailing bytes — a divergence *forced by* the Aeneas fragment (no variable-length slices), and upstream's own TODO is to reject trailing bytes, so the mirror models the intended-stricter behavior. |
+| `[bug]` | a behavioral difference on the shared domain. **None open.** |
 
 What is **not modeled at all** (absent upstream functions/features) is listed in each file's
-header "Correspondence & coverage" block, since an omission has no per-line site. Note: Signal's
-`#[hax_lib::opaque]` markers are about its *panic-freedom* proofs and are **not** used here as a
-boundary — our opaque boundary is the cryptographic **hardness floor**; everything above it we
-extract and reduce.
+header "Correspondence & coverage" block, since an omission has no per-line site.
 
 `make verify` checks the *proofs*, not whether the *definitions* model the intended notions — that
 separate trust surface (which security games are reused from VCVio vs defined here, the extraction
 trust, and the named hardness assumptions) is tracked explicitly in [`TRUST.md`](TRUST.md).
 
-## Toolchain (`deps/`, gitignored — built locally, nothing global touched)
+## Toolchain & reproducibility (`deps/`, gitignored — built locally, nothing global touched)
 
-- `deps/aeneas` — Aeneas at the **Lean v4.29.0** commit (`f71903c1`), built from source:
-  local opam switch `_opam`, `gmake setup-charon` + `gmake` (uses GNU `gmake`, not macOS
-  `make`). Charon is built alongside under `deps/aeneas/charon`.
-- `deps/VCV-io` — VCVio at Lean v4.29.0, sharing Mathlib v4.29.0 with Aeneas.
+Everything under `deps/` is a version-pinned external checkout, built locally and never
+committed. To replicate the experiments, check out each at the exact commit below and build it,
+then run `make verify` (which extracts the Rust and re-checks every proof against the axiom gate).
 
-These are large, version-pinned, and reproducible but not committed; rebuild them before
-running `make`. (Aeneas and VCVio independently pin **Mathlib v4.29.0**, which is what lets
-the extracted code and the security framework live in one Lake project.)
+| Dependency | Repo | Pinned commit | Version | Role |
+|---|---|---|---|---|
+| Lean / Lake | `leanprover/lean4` | tag `v4.29.0` | `v4.29.0` | proof assistant (pinned in `demos/lean/lean-toolchain`) |
+| Mathlib | `leanprover-community/mathlib4` | `8a178386ffc0` (tag `v4.29.0`) | `v4.29.0` | shared by Aeneas **and** VCVio (each pins it independently) — this is what lets the extracted code and the security framework live in one Lake project |
+| Aeneas | `AeneasVerif/aeneas` | `f71903c186c2` | `build-2026.05.06`, Lean v4.29.0 | Rust→Lean extraction backend (`deps/aeneas`) |
+| Charon | `AeneasVerif/charon` | `ed22146b1cd4` | Rust `nightly-2026-02-07` | Rust→LLBC frontend, built under `deps/aeneas/charon` |
+| VCVio | `dtumad/VCV-io` | `928108b942fa` | `v4.29.0-115-g928108b` | game-based security framework (`deps/VCV-io`) |
+
+**Mirrored libsignal / SPQR sources.** The PQXDH and SPQR Rust analogs (`demos/rust/pqxdh`,
+`demos/rust/spqr`) track these exact upstream revisions; every `XREF:` tag cites
+`file:lines @commit` against them:
+
+| Upstream | Repo | Pinned commit | Tag |
+|---|---|---|---|
+| libsignal | `signalapp/libsignal` | `5441a83eb66f` | `v0.94.3` |
+| SPQR | `signalapp/SparsePostQuantumRatchet` | `f2589fef855c` | `v1.5.1` |
+
+Build notes: Aeneas builds from source via a local opam switch (`_opam`) with
+`gmake setup-charon` + `gmake` (GNU `gmake`, not macOS `make`), which also builds Charon under
+`deps/aeneas/charon`; VCVio is a standard Lake project. Rebuild both before running `make`.
 
 ## Scope / trust boundary
 

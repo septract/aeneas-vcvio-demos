@@ -1,6 +1,6 @@
 # Trust Ledger
 
-*Last updated: 2026-05-30.*
+*Last updated: 2026-06-01.*
 
 This file tracks **where the demos introduce trust** — the surfaces a reader must believe in
 order to believe the headline theorems mean what we say they mean. It exists because the
@@ -141,6 +141,44 @@ the reused advantage notions are indexed by a security parameter.
 
 ---
 
+## libsignal protocol nodes — PQXDH & SPQR (`Demos/Pqxdh/*`, `Demos/Spqr/*`, `Demos/Crypto/Sha256.lean`)
+
+These are **not** security demos. Every headline theorem is **value-adequacy (totality)** or
+**functional correctness** of an Aeneas-extracted function — a byte-layout spec, a codec
+round-trip, a comparator's accept/reject behaviour. They introduce **no security game** and prove
+**no security property**: they are the extracted *substrate* the eventual PQXDH (AKE /
+session-key-indistinguishability) and SPQR (SCKA) proofs would reduce over. Those games are **not
+built** (see Deferred). Their trust profile is therefore dominated by two surfaces beyond the
+Layer-0 extractor, plus the hardness floor:
+
+| Surface | Class | Notes / precedent |
+|---|---|---|
+| **Faithfulness of the Rust mirror to upstream** — `demos/rust/{pqxdh,spqr}/*.rs` mirror pinned libsignal `5441a83` (v0.94.3) / SPQR `f2589fe` (v1.5.1) | **(C)** ⚠️ | the **key supervisory surface** for these nodes. The correspondence is agent-authored and machine-uncheckable; it is recorded per-site as `XREF: file:lines @commit [class]` tags (`grep -rn XREF demos/rust`). Almost all are `[type-only]` (`Vec`→fixed array, `GF16`→`u16`, `Result`→`Option`, `repr(C)` reinterpret→slice copy, Horner↔power-table); a reviewer checks each tag against the cited upstream lines. The divergence classes are defined in each file header. |
+| **The spec *statements* are the intended ones** — the PQXDH HKDF secret-input layout `0xFF³² ‖ DH1‖DH2‖DH3[‖DH4]‖SS`, `AD = EncodeEC(IK_A)‖EncodeEC(IK_B)`, `DecodeEC∘EncodeEC = id`, the `KDF_AUTH` split, the chain-step formula | **(C)** | not games, but each is a place to check the *statement*, not just the proof. Anchored to the PQXDH spec / SPQR source each cites; the byte ordering is exactly the part the Bhargavan et al. (USENIX '24) re-encapsulation attack turned on, so it is the high-value thing to read. |
+| `decode_ec` `[domain-restricted]` to exactly `[u8;33]` (vs upstream `&[u8]` ≥33, trailing bytes tolerated) | (C)/note | forced by the Aeneas fragment (no variable-length slices); upstream's own TODO is to reject trailing bytes, so the mirror models the intended-stricter behaviour. The only sub-domain restriction; **no `[bug]`-class divergence is open**. |
+| **Hardness floor below the nodes** — X25519/Gap-DH, ML-KEM/Module-LWE (IND-CCA), AES-as-PRP, SHA-256-*compression*-as-PRF/RO | **(A)** | assumed, not extracted — the leaves the eventual reductions bottom out on. ML-KEM appears in the SPQR typestate **only as a typed boundary** (a VCVio `KeyEncapMech`), not yet under any security claim. |
+
+Headlines (all totality / functional-correctness — **no security**): PQXDH key schedule
+(`secret_prefix_loop_spec`, `derive_split_spec`, `encode_ec_spec`, `decode_encode_roundtrip`,
+`pqxdh_secret_input_spec`, `pqxdh_secret_input_with_opk_spec`, `associated_data_spec`); SPQR
+field/codec/decoder (`gf_*_total`, `poly_*_total`, `mult_xdiff_trailing_total`, `prepare_total`,
+`complete_total`, `lagrange_interpolate_total`, `compute_at_total`, `decode_value_at_total`); SPQR
+authenticator glue (`epoch_to_be_bytes_total`, `update_split_spec`, `auth_update_ikm_spec`,
+`compare_loop_refl`, `inz_spec`, `compare_reject`, `auth_update_info_total`, `mac_hdr_data_total`,
+`mac_ct_data_total`); SHA-256/HMAC/HKDF/AEAD + SPQR chain step (`sha256_compress_total`,
+`sha256_total`, `hmac_sha256_var_total`, `hkdf_extract_total`, `hkdf_expand_96_total`,
+`hkdf_expand_64_total`, `etm_encrypt_var_total`, `etm_decrypt_var_total`, `spqr_chain_next_total`);
+and the SPQR typestate (`send_step_total`, `recv_step_total`, `vulnerable_epoch_total`,
+`init_a_total`, `init_b_total`).
+
+**Scope reminder.** A green `make verify` here means these functions are total and compute the
+stated byte-level functions, *given* the extractor (X) and the mirror-faithfulness (C) surfaces
+above. It does **not** mean PQXDH or SPQR is proved secure — no AKE/SCKA game is stated or
+discharged. The typestate is a *structure-faithful skeleton* (the transition graph an SCKA game
+would quantify over), not a security theorem.
+
+---
+
 ## Deferred — require the team's cryptographers (NOT in the trusted base; no clean in-tool precedent)
 
 These were considered and **intentionally not built**, because they would require defining novel
@@ -150,8 +188,8 @@ improvise. They are recorded here so the boundary is explicit.
 | Candidate | Why it needs an expert |
 |---|---|
 | PQXDH **KEM⊕DH robust combiner** (key pseudorandom under KEM-IND-CCA *or* DH) | a specialized security model with no trusted reference; needs the combiner game defined/audited by a cryptographer (cf. PQXDH CryptoVerif analysis; Bindel et al. hybrid-KEX; Giacon–Heuer–Poettering KEM combiners) |
-| **Encrypt-then-MAC AEAD** | VCVio has no computational IND-CPA / INT-CTXT / AE game for *symmetric* encryption (only perfect secrecy); would require ~3 new game definitions — textbook, but enough invention to want a cryptographer to bless them first |
-| **HMAC-is-a-PRF** | deep, novel infrastructure (Merkle–Damgård cascade, dual-PRF); discharges Demo 4's (A) assumption but is paper-sized |
+| **Encrypt-then-MAC AEAD** | the EtM construction is already extracted and totality-proved (`Sha256.lean` `etm_*`); what's deferred is the *security game* — VCVio has no computational IND-CPA / INT-CTXT / AE game for *symmetric* encryption (only perfect secrecy), so it would require ~3 new game definitions — textbook, but enough invention to want a cryptographer to bless them first |
+| **HMAC-is-a-PRF** | SHA-256 and the two-pass HMAC are already extracted and totality-proved (`Sha256.lean`); what's deferred is the *reduction* — deep, novel infrastructure (Merkle–Damgård cascade, dual-PRF) that discharges Demo 4's (A) assumption down to the SHA-256 compression function, but is paper-sized |
 | **Multi-user UF-CMA** | a new (multi-key) game |
 
 **The supervisability boundary ≈ the precedent boundary.** Work that reuses a trusted VCVio game,

@@ -31,3 +31,13 @@ Demos are often developed in isolated git worktrees, and **several agents may be
 - **Merge discipline:** land a demo's branch into `main` only when `make verify` is green. **Always seek explicit user approval *before* merging a worktree branch into `main`** — this is a deliberate exception to the run-until-completion / autonomy rule: stop and ask, even mid-task. Never commit to `main` directly while a worktree is in flight (not even standalone doc changes); make edits in the worktree and let them migrate to `main` on the approved merge. Only after approval: `git merge`, then `git worktree remove .worktrees/<name>` and `git branch -d <name>`.
 - **No concurrent `main` commits:** while working in a worktree, do **not** make any commits to `main` at the same time (not even doc/guidance changes) unless the user *explicitly and unambiguously* asks for it. Put the change in the worktree and let it migrate to `main` on the approved merge.
 - **Concurrency hygiene:** because others may be committing to `main`, stage your own files explicitly (avoid `git add -A`), prefer working on your demo branch, and `git pull --rebase` before pushing if needed.
+
+## Review & audit subagents
+
+When you spawn subagents to review or audit work (proofs, notes, security definitions), get the most signal by:
+
+- **Brief them to be skeptical, not confirmatory.** Give an adversarial persona and the prior that the work is *probably subtly wrong*: "find what's broken," not "check that it looks fine."
+- **Decorrelate from your own view when the review needs independent judgment.** Don't feed the reviewer your conclusions, confidence, or framing — point it at the primary sources and let it form its own view. For high-stakes work, run two: an *inside* reviewer (is it faithful to our own sources/process?) and an *outside* reviewer (is it the right thing at all, judged independently?).
+- **Demand grounding.** Every finding anchored to a `file:line` or page; verbatim-vs-reconstructed tags; real citations; and an explicit list of what it could *not* verify.
+- **Don't trust the reviewer blindly either.** Spot-check its highest-risk claims yourself against the sources before acting on them; a confident reviewer can also be confidently wrong (and can miss things — e.g. searching only one subtree).
+- Reviewers add the most value exactly where you — or the human supervisor — cannot self-certify the result.

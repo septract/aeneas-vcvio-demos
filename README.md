@@ -6,6 +6,22 @@ property in **VCVio** — with no `sorry` and no faked results. The demos are sm
 self-contained crypto building blocks (the kind that show up in real messaging protocols
 such as Signal), each proved end-to-end from extracted Rust.
 
+> **⚠️ Built by a human-supervised AI agent.** The Rust mirrors, the Lean proofs, and this
+> prose were all produced by an AI coding agent working under human supervision, not written by
+> hand. What this does and does not buy you:
+> - **The proofs are machine-checked.** Every headline theorem is verified by the Lean kernel and
+>   gated by `make verify` to depend only on `[propext, Classical.choice, Quot.sound]` — no
+>   `sorry`, no `native_decide`, no custom axioms. That guarantee rests on Lean + the gate, **not**
+>   on trusting the agent. If `make verify` is green, the stated theorems hold *about the extracted
+>   Lean*.
+> - **Judgement-laden claims still need human review.** Whether each theorem is the *intended*
+>   security notion, whether the extracted Rust *faithfully mirrors* libsignal/SPQR (the `XREF`
+>   ledger), and whether the named hardness assumptions are the right ones — these are not settled
+>   by the kernel. Treat them as agent-authored and review accordingly; `TRUST.md` records the
+>   definitional trust surface.
+> - **This is a research / demonstration artifact**, not audited production code or a deployed
+>   protocol security proof.
+
 ## Layout
 
 ```

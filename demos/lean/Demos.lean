@@ -14,11 +14,13 @@ import Demos.Ratchet.Chacha
 import Demos.Ratchet.Cost
 import Demos.Ratchet.ForwardSecrecy
 import Demos.Ratchet.Generic
+import Demos.Ratchet.GenericIndexed
 import Demos.Pqxdh.KeySchedule
 import Demos.Pqxdh.Correctness
 import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
 import Demos.Spqr.ChainSplit
+import Demos.Spqr.RatchetPrg
 import Demos.Spqr.AuthMac
 import Demos.Spqr.StatesGraph
 import Demos.AuthChannel.Mac

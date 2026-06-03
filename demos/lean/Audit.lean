@@ -28,6 +28,8 @@ import Demos.Crypto.Sha256
 import Demos.Crypto.Hkdf
 import Demos.Crypto.HmacPrf
 import Demos.Spqr.ChainSplit
+import Demos.Ratchet.GenericIndexed
+import Demos.Spqr.RatchetPrg
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -240,6 +242,33 @@ import Demos.Spqr.ChainSplit
 -- prk/info4 and asserts hkdf_expand_64 prk info4 35 = ok genr8r — so the split is of the real
 -- cryptographic block, not an arbitrary array) — the layout the SCKA output_key production rests on.
 #print axioms Spqr.ChainSplit.spqr_chain_next_split_spec
+
+-- STEP-INDEXED generic ratchet hybrid (RatchetGenericIndexed): generalizes the RatchetGeneric
+-- hybrid from a single step-invariant generator G : K → B to a step-indexed FAMILY G : ℕ → K → B,
+-- threading an absolute base index t so the length-n keystream from base t uses G t, G (t+1), …,
+-- G (t+n-1) and hop i reduces to the DISTINCT PRGScheme genBlockPRGI G (t+i). NO new game: every
+-- advantage term is VCVio's existing PRGScheme.prgAdvantage; the per-step PRG-security assumption is
+-- a hypothesis (a prgAdvantage bound premise), exactly as RatchetGeneric carries its single-G bound.
+-- gen_advantage_le_sum: telescoping Σε advantage bound; gen_secure_asymptotic_idx: poly-length ⇒
+-- pseudorandom keystream family (the single negligible ε uniformly bounds the per-hop advantage).
+#print axioms RatchetGenericIndexed.gen_advantage_le_sum
+#print axioms RatchetGenericIndexed.gen_secure_asymptotic_idx
+
+-- SPQR symmetric-ratchet keystream pseudorandomness (Spqr.RatchetPrg): instantiates the step-indexed
+-- hybrid above at the COUNTER-INDEXED SPQR block generator spqrGen ctr0 : ℕ → Key → Blk64 (hop i
+-- evaluates SPQR's chain core at counter ctr0+i, the genuine 64-byte HKDF-Expand block driven by the
+-- extracted spqr_chain_next), reusing Spqr.ChainSplit.spqrSplit / spqrSplit_bijective VERBATIM for the
+-- length-doubling split. spqrGen_step_eq is the value-adequacy BRIDGE: the split of spqrGen's i-th
+-- block is EXACTLY the (new_next, out_key) pair the extracted spqr_chain_next next (ctr0+i) returns,
+-- so the hybrid is over the real chain step. spqr_ratchet_advantage_le_sum: the SPQR keystream Σε
+-- bound; spqr_ratchet_secure_asymptotic: poly-length + per-hop PRG hypothesis ⇒ pseudorandom. The
+-- per-step PRG security is an explicit HYPOTHESIS (a PRGScheme.prgAdvantage bound premise), NOT an
+-- axiom and NO new game — same shape as RatchetSecurity.ratchet_secure_asymptotic. Scope (inherited
+-- from Chain.lean): the hybrid treats each hop's chain key as uniform, whereas it is HKDF-Extracted
+-- from the previous block; reducing the Extract step (PRK pseudorandomness) is out of scope.
+#print axioms Spqr.RatchetPrg.spqrGen_step_eq
+#print axioms Spqr.RatchetPrg.spqr_ratchet_advantage_le_sum
+#print axioms Spqr.RatchetPrg.spqr_ratchet_secure_asymptotic
 
 -- SPQR Reed-Solomon codec field core: polynomial evaluation (encoder chunk generation),
 -- pointwise add, and scalar multiply over GF(2^16) — all total.

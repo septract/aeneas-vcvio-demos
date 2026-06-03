@@ -30,6 +30,8 @@ import Demos.Crypto.HmacPrf
 import Demos.Spqr.ChainSplit
 import Demos.Ratchet.GenericIndexed
 import Demos.Spqr.RatchetPrg
+import Demos.Spqr.Gf16Field
+import Demos.Spqr.RsBridge
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -303,6 +305,44 @@ import Demos.Spqr.RatchetPrg
 #print axioms Spqr.Gf.poly_add_eq
 #print axioms Spqr.Gf.poly_scale_eq
 #print axioms Spqr.Gf.mult_xdiff_trailing_eq
+
+-- SPQR Reed-Solomon codec — Layer B (PARTIAL): the ADDITIVE GROUP of the extracted GF(2^16) field.
+-- These are about `gfAddV`, the value spec of the extracted `gf.gf_add` (banked as `gf_add_eq`):
+-- the field add is commutative (gfAddV_comm), associative (gfAddV_assoc), has identity 0
+-- (gfAddV_zero / gfAddV_zero_left) and is its own inverse (gfAddV_self) — the characteristic-2
+-- abelian group, proved STRUCTURALLY from BitVec/Nat XOR (no field-law decide, no axiom). And the
+-- XOR-as-polynomial-addition bridge `toPoly_gfAddV`: under the bit↔coefficient embedding
+-- `toPoly : U16 → (ZMod 2)[X]`, `gfAddV` is EXACTLY polynomial addition — the additive half of the
+-- ring-iso `U16 ≅ (ZMod 2)[X]/(POLY)`. NB: the MULTIPLICATIVE field instance (gfMulV = mult mod POLY,
+-- and Irreducible POLY over ZMod 2) is the documented OPEN obligation — NOT closed here, NOT faked.
+#print axioms Spqr.Gf16Field.gfAddV_comm
+#print axioms Spqr.Gf16Field.gfAddV_assoc
+#print axioms Spqr.Gf16Field.gfAddV_zero
+#print axioms Spqr.Gf16Field.gfAddV_zero_left
+#print axioms Spqr.Gf16Field.gfAddV_self
+#print axioms Spqr.Gf16Field.toPoly_gfAddV
+
+-- SPQR Reed-Solomon codec — Layer C (PARTIAL): value specs of the DECODER's evaluation kernel
+-- `gf.compute_at` (the `decode_value_at` re-evaluation step), extending the banked value-spec style
+-- (poly_eval_eq / mult_xdiff_trailing_eq) to the remaining decoder loops. All field-law-FREE — they
+-- pin EXACTLY which gfMulV/gfAddV combination the extracted loops form, in terms of the value specs
+-- of gf_mul (gfMulV) / gf_add (gfAddV):
+--   compute_at_loop1_eq / _eq0 — the coefficient dot product: started at (out,k), the loop folds
+--     `out ↦ gfAddV out (gfMulV coeffs[k] powers[k])`, i.e. it computes `dotV coeffs powers len out k`
+--     (= Σ_{k<len} coeffs[k] ⊗ powers[k]) — a recurrence about `gf.compute_at_loop1`;
+--   compute_at_loop0_recurrence — the x-power table: from write index i≥2 to len≤37 the loop builds
+--     `powers[j] = gfMulV powers[j/2] powers[j/2+j%2]` for 2≤j<len (and preserves slots <i), the
+--     squaring recurrence — a value spec about `gf.compute_at_loop0`;
+--   compute_at_eq — the assembled spec of `gf.compute_at`: it succeeds with the field dot product
+--     `dotV coeffs powers len 0 0` of the coefficients against the x-power table (powers[0]=1,
+--     powers[1]=x, squaring recurrence). The full in-boundary value characterization of the
+--     extracted `gf.compute_at`. NB: connecting `dotV`/the power recurrence to `Polynomial.eval`
+--     (hence the unconditional decode∘encode=id about gf.decode_value_at) additionally needs the
+--     GF(2^16) FIELD instance — the documented Gf16Field gap (Irreducible POLY + clmul/reduce).
+#print axioms Spqr.RsBridge.compute_at_loop1_eq
+#print axioms Spqr.RsBridge.compute_at_loop1_eq0
+#print axioms Spqr.RsBridge.compute_at_loop0_recurrence
+#print axioms Spqr.RsBridge.compute_at_eq
 
 -- SPQR typestate skeleton (the SCKA construction's transition structure): send/recv are total
 -- pure dispatches over the 11-state machine (next state + emitted payload + output-key timing),

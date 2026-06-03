@@ -18,6 +18,9 @@ import Demos.Ratchet.GenericIndexed
 import Demos.Pqxdh.KeySchedule
 import Demos.Pqxdh.Correctness
 import Demos.Spqr.Gf
+import Demos.Spqr.Gf16Field
+import Demos.Spqr.RsBridge
+import Demos.Spqr.RsRoundtrip
 import Demos.Spqr.Authenticator
 import Demos.Spqr.ChainSplit
 import Demos.Spqr.RatchetPrg

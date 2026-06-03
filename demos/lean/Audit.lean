@@ -82,6 +82,11 @@ import Demos.Crypto.Sha256
 -- The associated data AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B) (two 0x05-tagged 33-byte keys) — the
 -- transcript-MACed identity binding, the exact construction the BJKS re-encapsulation attack hit.
 #print axioms Pqxdh.associated_data_spec
+-- Initiator/recipient orchestration envelope: value adequacy (totality) of pqxdh_initiate /
+-- pqxdh_accept — the one-time-prekey 3-leg/4-leg branch and the recipient base-key validation
+-- guard (is_canonical → None), with DH/ML-KEM/HKDF as the typed boundary (outputs are inputs).
+#print axioms Pqxdh.pqxdh_initiate_total
+#print axioms Pqxdh.pqxdh_accept_total
 
 -- SPQR node (GF(2^16) field arithmetic): value adequacy (totality) of the genuine carryless
 -- multiply + table reduction Signal's own hax/F* build verifies — gf_add is XOR, gf_mul/

@@ -11,8 +11,11 @@ such as Signal), each proved end-to-end from extracted Rust.
 > hand. What this does and does not buy you:
 > - **The proofs are machine-checked.** Every headline theorem is verified by the Lean kernel and
 >   gated by `make verify` to depend only on `[propext, Classical.choice, Quot.sound]` — no
->   `sorry`, no `native_decide`, no custom axioms. That guarantee rests on Lean + the gate, **not**
->   on trusting the agent. If `make verify` is green, the stated theorems hold *about the extracted
+>   `sorry`, no `native_decide`, no custom axioms. (One documented exception: the two PQXDH
+>   key-agreement theorems additionally depend on five *named* hardness-floor axioms — the opaque
+>   X25519 / ML-KEM / HKDF / EC-canonicity primitives — and the gate confines those to exactly
+>   those two theorems; see `TRUST.md`.) That guarantee rests on Lean + the gate, **not** on
+>   trusting the agent. If `make verify` is green, the stated theorems hold *about the extracted
 >   Lean*.
 > - **Judgement-laden claims still need human review.** Whether each theorem is the *intended*
 >   security notion, whether the extracted Rust *faithfully mirrors* libsignal/SPQR (the `XREF`
@@ -226,7 +229,7 @@ ratchet security (an SCKA game for SPQR) — whose security games themselves are
 
 | Node | File | Extracted Rust (mirrors) | Property proved |
 |---|---|---|---|
-| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse); the **full HKDF secret-input byte layout** (both paths) `0xFF³² ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS`, and the **associated data** `AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B)` — the byte-layout glue the Bhargavan et al. (USENIX'24) re-encapsulation attack lived in |
+| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse); the **full HKDF secret-input byte layout** (both paths) `0xFF³² ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS`, and the **associated data** `AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B)` — the byte-layout glue the Bhargavan et al. (USENIX'24) re-encapsulation attack lived in. Also the **full initiator/recipient key agreement** (`pqxdh_initiate`/`pqxdh_accept`): the X25519 agreements, ML-KEM-1024 encaps/decaps, and HKDF are invoked at their faithful **call sites**, so the key→leg wiring (which key produces which DH leg, in which order, into the KDF) is extracted Rust — plus the recipient's `is_canonical` base-key guard. The primitives are `#[charon::opaque]` = five **named hardness-floor axioms** (the gate's one documented exception, see `TRUST.md`); value-adequacy is proved relative to them |
 | SPQR GF(2¹⁶) arithmetic | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/gf.rs`, the portable path Signal's hax/F\* build verifies) | **value adequacy** (totality) of the genuine carryless multiply + table reduction: `gf_add` is XOR, `gf_mul`/`poly_reduce`/`gf_div` are total `u16` functions — the SPQR analog of the ChaCha node |
 | SPQR authenticator glue | `Demos/Spqr/Authenticator.lean` | `authenticator.rs` (SPQR `authenticator.rs` + `util.rs`) | big-endian epoch encoding is total; the `KDF_AUTH` output splits to the two 32-byte halves; the update IKM is **`root_key ‖ k`** (the documented salt/IKM swap vs. the spec prose); the constant-time comparator leaves its accumulator unchanged on equal MACs **and rejects (returns nonzero on) any tag that differs at some byte** (`compare_reject`/`inz` — the unforgeability direction); the MAC-input builders (`mac_hdr`, `mac_ct` over the full `ct1‖ct2`) are total |
 

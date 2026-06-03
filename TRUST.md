@@ -13,6 +13,12 @@ of the wrong definition is worthless, and the kernel cannot tell the difference.
 - **Covers:** every headline theorem (listed in `demos/lean/Audit.lean`) depends transitively on
   *only* `[propext, Classical.choice, Quot.sound]` — no `sorry`/`sorryAx`, no `native_decide`
   (`Lean.ofReduceBool`), no custom `axiom`. This is a genuine *no-cheating* gate on the proofs.
+  **One documented exception:** the two PQXDH key-agreement theorems (`Pqxdh.pqxdh_initiate_total`,
+  `Pqxdh.pqxdh_accept_total`) additionally depend on five *named* hardness-floor axioms — the opaque
+  X25519 / ML-KEM / HKDF / EC-canonicity primitives (`pqxdh.x25519_agree`, `mlkem_encapsulate`,
+  `mlkem_decapsulate`, `hkdf_sha256_derive`, `ec_is_canonical`). `scripts/audit.sh` *confines* them
+  to exactly those two theorems (any leakage into the other 85 fails the gate), so the strict
+  3-axiom guarantee still holds everywhere else. See the PQXDH/SPQR node section below.
 - **Does NOT cover:** definitional adequacy (does our game/scheme model the real notion?), the
   faithfulness of Aeneas extraction, or the named hardness assumptions. Those are tracked here.
 
@@ -156,11 +162,16 @@ Layer-0 extractor, plus the hardness floor:
 | **Faithfulness of the Rust mirror to upstream** — `demos/rust/{pqxdh,spqr}/*.rs` mirror pinned libsignal `5441a83` (v0.94.3) / SPQR `f2589fe` (v1.5.1) | **(C)** ⚠️ | the **key supervisory surface** for these nodes. The correspondence is agent-authored and machine-uncheckable; it is recorded per-site as `XREF: file:lines @commit [class]` tags (`grep -rn XREF demos/rust`). Almost all are `[type-only]` (`Vec`→fixed array, `GF16`→`u16`, `Result`→`Option`, `repr(C)` reinterpret→slice copy, Horner↔power-table); a reviewer checks each tag against the cited upstream lines. The divergence classes are defined in each file header. |
 | **The spec *statements* are the intended ones** — the PQXDH HKDF secret-input layout `0xFF³² ‖ DH1‖DH2‖DH3[‖DH4]‖SS`, `AD = EncodeEC(IK_A)‖EncodeEC(IK_B)`, `DecodeEC∘EncodeEC = id`, the `KDF_AUTH` split, the chain-step formula | **(C)** | not games, but each is a place to check the *statement*, not just the proof. Anchored to the PQXDH spec / SPQR source each cites; the byte ordering is exactly the part the Bhargavan et al. (USENIX '24) re-encapsulation attack turned on, so it is the high-value thing to read. |
 | `decode_ec` `[domain-restricted]` to exactly `[u8;33]` (vs upstream `&[u8]` ≥33, trailing bytes tolerated) | (C)/note | forced by the Aeneas fragment (no variable-length slices); upstream's own TODO is to reject trailing bytes, so the mirror models the intended-stricter behaviour. The only sub-domain restriction; **no `[bug]`-class divergence is open**. |
-| **Hardness floor below the nodes** — X25519/Gap-DH, ML-KEM/Module-LWE (IND-CCA), AES-as-PRP, SHA-256-*compression*-as-PRF/RO | **(A)** | assumed, not extracted — the leaves the eventual reductions bottom out on. ML-KEM appears in the SPQR typestate **only as a typed boundary** (a VCVio `KeyEncapMech`), not yet under any security claim. |
+| **Hardness floor below the nodes** — X25519/Gap-DH, ML-KEM/Module-LWE (IND-CCA), AES-as-PRP, SHA-256-*compression*-as-PRF/RO | **(A)** | assumed, not extracted — the leaves the eventual reductions bottom out on. In the PQXDH key agreement these are **`#[charon::opaque]` call sites**, which Aeneas emits as five named Lean `axiom`s (`pqxdh.x25519_agree`, `mlkem_encapsulate`, `mlkem_decapsulate`, `hkdf_sha256_derive`, `ec_is_canonical`); `scripts/audit.sh` allows them **only** in `pqxdh_initiate_total`/`pqxdh_accept_total` (the documented gate exception). In the SPQR typestate ML-KEM appears **only as a typed boundary** (a VCVio `KeyEncapMech`), not yet under any security claim. |
 
 Headlines (all totality / functional-correctness — **no security**): PQXDH key schedule
 (`secret_prefix_loop_spec`, `derive_split_spec`, `encode_ec_spec`, `decode_encode_roundtrip`,
-`pqxdh_secret_input_spec`, `pqxdh_secret_input_with_opk_spec`, `associated_data_spec`); SPQR
+`pqxdh_secret_input_spec`, `pqxdh_secret_input_with_opk_spec`, `associated_data_spec`) and the
+full initiator/recipient key agreement (`pqxdh_initiate_total`, `pqxdh_accept_total` — value
+adequacy of `pqxdh_initiate`/`pqxdh_accept`, which **call** the opaque primitives at their faithful
+call sites so the key→leg wiring is extracted Rust; the five primitives are the named floor axioms
+above, and totality is proved *relative to* their success. NB these totality theorems do **not**
+pin the wiring — that is the (C) `XREF` faithfulness surface, checked by review); SPQR
 field/codec/decoder (`gf_*_total`, `poly_*_total`, `mult_xdiff_trailing_total`, `prepare_total`,
 `complete_total`, `lagrange_interpolate_total`, `compute_at_total`, `decode_value_at_total`); SPQR
 authenticator glue (`epoch_to_be_bytes_total`, `update_split_spec`, `auth_update_ikm_spec`,

@@ -583,4 +583,56 @@ theorem associated_data_spec (ika ikb : Array Std.U8 32#usize) :
     have he : 33 + (1 + j) = 34 + j := by omega
     rw [he] at h; rw [h]; exact hbtail j hj
 
+/-! ### The PQXDH key agreement (initiator / recipient)
+
+The orchestration calls the opaque cryptographic primitives (`x25519_agree`,
+`mlkem_encapsulate`/`decapsulate`, `hkdf_sha256_derive`, `ec_is_canonical` — Lean
+`axiom`s, the hardness floor) at the faithful call sites: the agreement *wiring* (which
+key produces which leg, in which order, into the KDF) is genuine extracted Rust. The
+primitives' Rust signatures are infallible, but Aeneas conservatively wraps every opaque
+call in `Result`; so value adequacy of the *orchestration* — that it adds no partiality of
+its own (no out-of-bounds, no underflow, exhaustive matches) — is stated **relative to the
+primitives succeeding**, the floor totality assumptions `hagree`/`hencaps`/… below.
+
+These theorems establish value-adequacy ONLY; they do **not** pin the key-leg wiring (the same
+totality would hold for a deliberately permuted orchestration). Faithfulness of the wiring to
+upstream libsignal is the separate `XREF` correspondence in `pqxdh.rs`, checked by review. -/
+
+-- The deterministic sub-steps are total; make their specs local `step` rules so the
+-- orchestration's `let … ← …` binds discharge automatically.
+attribute [local step] pqxdh_secret_input_spec pqxdh_secret_input_with_opk_spec derive_split_spec
+
+/-- **Value adequacy of the initiator key agreement** (relative to the opaque primitives).
+`pqxdh_initiate` is total given primitive success: the three (or four, with a one-time
+prekey) X25519 agreements, the ML-KEM encapsulation, the secret-input assembly, the HKDF
+call, and the output split are all total, so the orchestration introduces no partiality of
+its own. -/
+theorem pqxdh_initiate_total (params : pqxdh.InitiatorParameters) (coins : Array Std.U8 32#usize)
+    (hagree : ∀ a b, pqxdh.x25519_agree a b ⦃ fun _ => True ⦄)
+    (hencaps : ∀ a b, pqxdh.mlkem_encapsulate a b ⦃ fun _ => True ⦄)
+    (hhkdf : ∀ a b, pqxdh.hkdf_sha256_derive a b ⦃ fun _ => True ⦄) :
+    pqxdh.pqxdh_initiate params coins ⦃ fun _ => True ⦄ := by
+  unfold pqxdh.pqxdh_initiate
+  step*
+  -- Split the one-time-prekey branch, then in each branch destructure the opaque-call result
+  -- tuples (the KEM (ss, ct) pair, the derive_split triple) so the binds reduce; step* between.
+  split <;> (casesm* _ × _ <;> step* <;> casesm* _ × _ <;> step*)
+
+/-- **Value adequacy of the recipient key agreement** (relative to the opaque primitives).
+`pqxdh_accept` is total given primitive success: the `is_canonical` base-key guard takes the
+`None` branch or the agreement branch; the matching agreement order, the one-time-prekey
+branch, the assembly, the HKDF call, and the split are total. -/
+theorem pqxdh_accept_total (params : pqxdh.RecipientParameters)
+    (hagree : ∀ a b, pqxdh.x25519_agree a b ⦃ fun _ => True ⦄)
+    (hdecaps : ∀ a b, pqxdh.mlkem_decapsulate a b ⦃ fun _ => True ⦄)
+    (hhkdf : ∀ a b, pqxdh.hkdf_sha256_derive a b ⦃ fun _ => True ⦄)
+    (hcanon : ∀ a, pqxdh.ec_is_canonical a ⦃ fun _ => True ⦄) :
+    pqxdh.pqxdh_accept params ⦃ fun _ => True ⦄ := by
+  unfold pqxdh.pqxdh_accept
+  step*
+  -- Split the one-time-prekey branch; step through the assembly/KDF, then destructure the
+  -- derive_split result triple so the final bind reduces. (No KEM pair here: decapsulate
+  -- returns a single shared secret, unlike the initiator's encapsulate.)
+  split <;> (step* <;> casesm* _ × _ <;> step*)
+
 end Pqxdh

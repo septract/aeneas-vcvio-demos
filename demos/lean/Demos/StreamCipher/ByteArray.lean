@@ -14,6 +14,7 @@ import Demos.StreamCipher.LoopCorrectness
 import VCVio.CryptoFoundations.PRG
 import VCVio.OracleComp.Constructions.SampleableType
 import VCVio.CryptoFoundations.Asymptotics.Negligible
+import VCVio.OracleComp.QueryTracking.QueryBound
 import Mathlib.Data.Fintype.Vector
 
 open Aeneas Std OracleComp ENNReal PRGScheme
@@ -136,5 +137,32 @@ theorem streamGen_secure_asymptotic {S : ℕ → Type} [∀ sp, SampleableType (
     funext sp
     exact congrArg ENNReal.ofReal (streamGen_advantage (G sp) (m sp) (A sp))
   rw [heq]; exact hG
+
+/-- The reduction adds **no** oracle queries: `reduction m A = fun r => A (enc r m)` runs only the
+total extracted `combine` loop (a pure value computation, zero uniform-sampling queries) before
+calling `A`. So it makes exactly as many queries as `A`, staying inside any query-bound class `A`
+is in — efficiency preservation over the *meaty* extracted loop. -/
+theorem reduction_queryBound (m : Block) (A : PRGAdversary Block) (q : ℕ)
+    (hA : ∀ x, IsTotalQueryBound (A x) q) (r : Block) :
+    IsTotalQueryBound (reduction m A r) q := hA (enc r m)
+
+/-- **Security against the query-bounded adversary class (closing the "all adversaries" gap),
+over the meaty extracted loop.** As in `Word.lean`, the PRG hardness assumption `hPRG` is made
+relative to the query-bounded class (the satisfiable form of "`G` is a secure PRG"), and the
+reduction is *proved* to stay in that class (`reduction_queryBound`), so the 32-byte
+`combine`-based cipher is secure against the same class. The query-count caveat of `Word.lean`
+applies (query-bounded ⊋ PPT). -/
+theorem streamGen_secure_against_queryBounded {S : ℕ → Type} [∀ sp, SampleableType (S sp)]
+    (G : ∀ sp, PRGScheme (S sp) Block) (m : ℕ → Block) (A : ∀ _sp, PRGAdversary Block)
+    (q : ℕ → ℕ) (hA : ∀ sp x, IsTotalQueryBound (A sp x) (q sp))
+    (ε : ℕ → ℝ≥0∞) (hε : negligible ε)
+    (hPRG : ∀ sp (D : PRGAdversary Block),
+              (∀ x, IsTotalQueryBound (D x) (q sp)) →
+              ENNReal.ofReal ((G sp).prgAdvantage D) ≤ ε sp) :
+    negligible fun sp => ENNReal.ofReal ((streamGen (G sp) (m sp)).prgAdvantage (A sp)) := by
+  refine negligible_of_le (fun sp => ?_) hε
+  rw [streamGen_advantage (G sp) (m sp) (A sp)]
+  exact hPRG sp (reduction (m sp) (A sp))
+    (fun r => reduction_queryBound (m sp) (A sp) (q sp) (hA sp) r)
 
 end StreamByteSecurity

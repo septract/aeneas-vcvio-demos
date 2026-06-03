@@ -12,6 +12,20 @@
   chain key carried along as an extra output; each hop reduces to PRG security of the block
   generator `G`, via the same split-bijection `glue`. We reuse Chain.lean's helpers
   (`splitPure_bijective`, `prod_uniform_bind`, `uniformVec_eq`).
+
+  **Not a new security definition — a modeling choice over a trusted game (see `TRUST.md`).**
+  `fsGen` is *not* a bespoke forward-secrecy game: it is an **instance of VCVio's trusted
+  `PRGScheme`** (the generator emitting `(keystream G j ck₀, ck_j)`), and every theorem here is a
+  statement about *that generator's pseudorandomness*, discharged through VCVio's own
+  `prgAdvantage`. What is a *modeling choice* is reading "this generator is pseudorandom" **as**
+  forward secrecy: joint pseudorandomness of `(prefix, ck_j)` is a **sufficient condition** for the
+  textbook FS notion (given the compromised `ck_j`, earlier message keys are indistinguishable from
+  uniform — it implies that conditional game by marginalizing on `ck_j`), matching the standard
+  symmetric-KDF-chain forward-secrecy intuition (cf. Cohn-Gordon et al., *A Formal Security Analysis
+  of the Signal Messaging Protocol*, EuroS&P 2017). The kernel checks the pseudorandomness theorem;
+  whether this modeling captures the intended FS notion is a (C) judgement surfaced in `TRUST.md`
+  for a cryptographer to confirm. `ratchet_advantage_eq_fs` (below) machine-checks the "stronger
+  than plain keystream" claim.
 -/
 import Demos.Ratchet.Chain
 import Demos.Ratchet.Chacha
@@ -246,5 +260,50 @@ theorem chacha_forward_secrecy_asymptotic (len : ℕ → ℕ)
     negligible (fun sp =>
       ENNReal.ofReal ((fsGen RatchetChacha.chachaPure (len sp)).prgAdvantage (A sp))) :=
   fs_secure_asymptotic (fun _ => RatchetChacha.chachaPure) len A ε hε hbound hlen
+
+/-! ## Forward secrecy is genuinely *stronger* than plain keystream pseudorandomness.
+
+The file docstring claims `fsGen` (joint message-keys + surviving chain key) pseudorandomness is
+stronger than the `Chain.lean` keystream result, "projecting away the final key recovers it." The
+audit noted this `⇒` was asserted in prose but never machine-checked. The two theorems below close
+that: projecting the carried final key (`Prod.fst`) turns any keystream distinguisher into an
+`fsGen` distinguisher with the *same* advantage, so `fsGen`-security implies keystream-security. -/
+
+/-- **Projecting away the surviving chain key.** For any keystream distinguisher `A`, the ratchet
+keystream PRG's advantage against `A` *equals* the forward-secrecy PRG's advantage against the
+lifted distinguisher `fun p => A p.1` (which ignores the carried final chain key). The real
+experiments are identical (`fsGen.gen` projects to `ratchetPRG.gen`); the ideal experiments agree
+because the uniform product marginalizes (`prod_uniform_bind`), the extra uniform `Key` draw being
+independent of `A`'s input. -/
+theorem ratchet_advantage_eq_fs (G : Key → Blk64) (n : ℕ)
+    (A : PRGAdversary (List.Vector Key n)) :
+    (ratchetPRG G n).prgAdvantage A = (fsGen G n).prgAdvantage (fun p => A p.1) := by
+  have hreal : Pr[= true | (ratchetPRG G n).prgRealExp A]
+      = Pr[= true | (fsGen G n).prgRealExp (fun p => A p.1)] := by
+    simp only [PRGScheme.prgRealExp, fsGen, ratchetPRG, RatchetGeneric.genRatchetPRG, keystream]
+  have hideal : Pr[= true | (prgIdealExp A : ProbComp Bool)]
+      = Pr[= true | (prgIdealExp (R := List.Vector Key n × Key) (fun p => A p.1) : ProbComp Bool)] := by
+    simp only [PRGScheme.prgIdealExp]
+    rw [RatchetGeneric.prod_uniform_bind (α := List.Vector Key n) (β := Key) (γ := Bool)]
+    refine probOutput_bind_congr' ($ᵗ (List.Vector Key n)) true (fun a => ?_)
+    show Pr[= true | A a] = Pr[= true | (do let _b ← $ᵗ Key; A a)]
+    rw [probOutput_bind_const ($ᵗ Key) (A a) true]
+    simp
+  unfold PRGScheme.prgAdvantage
+  rw [hreal, hideal]
+
+/-- **Forward secrecy implies keystream pseudorandomness (asymptotic).** If the joint
+forward-secrecy generator is secure (the lifted distinguishers' advantage is negligible), then the
+plain ratchet keystream is pseudorandom — the formal sense in which `fsGen`-security is the
+*stronger* notion, now machine-checked rather than asserted. -/
+theorem keystream_secure_of_fs_asymptotic (G : ℕ → Key → Blk64) (len : ℕ → ℕ)
+    (A : ∀ sp, PRGAdversary (List.Vector Key (len sp)))
+    (hfs : negligible fun sp =>
+      ENNReal.ofReal ((fsGen (G sp) (len sp)).prgAdvantage (fun p => A sp p.1))) :
+    negligible fun sp => ENNReal.ofReal ((ratchetPRG (G sp) (len sp)).prgAdvantage (A sp)) := by
+  have heq : (fun sp => ENNReal.ofReal ((ratchetPRG (G sp) (len sp)).prgAdvantage (A sp)))
+      = (fun sp => ENNReal.ofReal ((fsGen (G sp) (len sp)).prgAdvantage (fun p => A sp p.1))) := by
+    funext sp; rw [ratchet_advantage_eq_fs]
+  rw [heq]; exact hfs
 
 end RatchetFS

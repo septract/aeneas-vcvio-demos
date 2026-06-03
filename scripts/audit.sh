@@ -11,7 +11,7 @@
 # emits as named Lean `axiom`s. Those — and ONLY those five named primitive axioms, and ONLY in
 # those two theorems — are additionally permitted. The check below ENFORCES that confinement:
 # if any of the five floor axioms appears in any OTHER headline theorem, the gate fails. So the
-# strong "only the 3 standard axioms" guarantee still holds for all the other (85) theorems,
+# strong "only the 3 standard axioms" guarantee still holds for all the other (90) theorems,
 # and the floor axioms are exactly the assumed hardness primitives, surfaced explicitly.
 #
 # NOTE: Lean pretty-prints long axiom lists across MULTIPLE lines, so we flatten the output to a
@@ -28,7 +28,7 @@ STANDARD='propext|Classical.choice|Quot.sound'
 FLOOR='pqxdh\.x25519_agree|pqxdh\.mlkem_encapsulate|pqxdh\.mlkem_decapsulate|pqxdh\.hkdf_sha256_derive|pqxdh\.ec_is_canonical'
 # The ONLY theorems permitted to additionally depend on the FLOOR axioms (exact names).
 FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total'
-EXPECTED=87  # number of 'depends on axioms' report lines expected (one per headline theorem)
+EXPECTED=92  # number of 'depends on axioms' report lines expected (one per headline theorem)
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

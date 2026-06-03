@@ -29,11 +29,17 @@ import Demos.Crypto.Sha256
 -- Demo 2a: PRG stream cipher (word) — tight reduction + asymptotic security.
 #print axioms StreamSecurity.streamGen_advantage
 #print axioms StreamSecurity.streamGen_secure_asymptotic
+-- Class-relative security (audit M3): the PRG assumption made relative to the query-bounded
+-- adversary class (the satisfiable form of "G is a secure PRG"), with the reduction proved to
+-- stay in that class. Mirrors RatchetCost.ratchet_secure_against_polyQuery.
+#print axioms StreamSecurity.streamGen_secure_against_queryBounded
 
 -- Demo 2b: combiner loop correctness, and byte-array security (reduction + asymptotic).
 #print axioms stream.combine_spec
 #print axioms StreamByteSecurity.streamGen_advantage
 #print axioms StreamByteSecurity.streamGen_secure_asymptotic
+-- Class-relative security over the meaty extracted `combine` loop (audit M3).
+#print axioms StreamByteSecurity.streamGen_secure_against_queryBounded
 
 -- Demo 3: symmetric KDF ratchet — value adequacy, the telescoping hybrid bound (Σε over the
 -- chain), and asymptotic security under the poly-many-hops side condition.
@@ -47,6 +53,11 @@ import Demos.Crypto.Sha256
 #print axioms RatchetChacha.chacha20_block_total
 #print axioms RatchetChacha.chacha_ratchet_advantage_le_sum
 #print axioms RatchetChacha.chacha_ratchet_secure_asymptotic
+-- Functional correctness of the ARX core (audit ChaCha gap): the extracted quarter-round computes
+-- exactly the RFC 8439 §2.1 add/xor/rotate formula on BitVec 32 — strictly beyond totality, pinning
+-- the named "ChaCha20 is a PRG" assumption to the genuine algorithm (security itself is necessarily
+-- an assumption; the theorem is generic over G by correct reduction methodology).
+#print axioms RatchetChacha.quarter_spec
 
 -- Demo 3 (cost adequacy): the reduction is efficient relative to the adversary (query bound),
 -- and the ratchet is secure against the poly-query adversary class (PRG assumption made
@@ -61,6 +72,12 @@ import Demos.Crypto.Sha256
 #print axioms RatchetFS.fs_advantage_le_sum
 #print axioms RatchetFS.fs_secure_asymptotic
 #print axioms RatchetFS.chacha_forward_secrecy_asymptotic
+-- Forward secrecy is genuinely STRONGER than plain keystream pseudorandomness (audit M7): the
+-- two were related only in prose. `ratchet_advantage_eq_fs` proves the keystream advantage equals
+-- the fsGen advantage against the final-key-projecting distinguisher; `keystream_secure_of_fs_asymptotic`
+-- is the resulting implication (fsGen-secure ⇒ keystream-secure), now machine-checked.
+#print axioms RatchetFS.ratchet_advantage_eq_fs
+#print axioms RatchetFS.keystream_secure_of_fs_asymptotic
 
 -- Demo 3 (width scaling): the hybrid is width-agnostic — proven over an abstract length-doubling
 -- split bijection, so security holds for a family whose key/block width grows with the security
@@ -76,11 +93,14 @@ import Demos.Crypto.Sha256
 #print axioms Pqxdh.encode_ec_spec
 #print axioms Pqxdh.decode_encode_roundtrip
 -- Full HKDF secret-input byte layout (both paths): 0xFF^32 ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS — the
--- KDF-input premise the AKE proof rests on (the segment ordering is the BJKS-attack-relevant part).
+-- KDF-input premise the AKE proof rests on. (NB: the BJKS re-encapsulation attack turned on binding
+-- the KEM public key PQSPK into the transcript, not on the ordering of these DH/SS segments; SS is
+-- the shared secret, no PQSPK is present — see KeySchedule.lean's scope caveat.)
 #print axioms Pqxdh.pqxdh_secret_input_spec
 #print axioms Pqxdh.pqxdh_secret_input_with_opk_spec
 -- The associated data AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B) (two 0x05-tagged 33-byte keys) — the
--- transcript-MACed identity binding, the exact construction the BJKS re-encapsulation attack hit.
+-- transcript-MACed identity binding. (NB: the BJKS attack turned on this AD *not* binding PQSPK;
+-- the layout proved here is the identity-key binding only, i.e. the pre-fix shape.)
 #print axioms Pqxdh.associated_data_spec
 -- Initiator/recipient orchestration envelope: value adequacy (totality) of pqxdh_initiate /
 -- pqxdh_accept — the one-time-prekey 3-leg/4-leg branch and the recipient base-key validation

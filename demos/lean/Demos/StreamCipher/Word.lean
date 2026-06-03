@@ -16,6 +16,7 @@ import Demos.Extracted.Otp
 import VCVio.CryptoFoundations.PRG
 import VCVio.OracleComp.Constructions.BitVec
 import VCVio.CryptoFoundations.Asymptotics.Negligible
+import VCVio.OracleComp.QueryTracking.QueryBound
 
 open Aeneas Std OracleComp ENNReal PRGScheme
 
@@ -102,5 +103,39 @@ theorem streamGen_secure_asymptotic {S : ℕ → Type} [∀ sp, SampleableType (
     funext sp
     exact congrArg ENNReal.ofReal (streamGen_advantage (G sp) (msg sp) (A sp))
   rw [heq]; exact hG
+
+/-- The reduction adds **no** oracle queries: `reduction msg A = fun r => A (r ⊕ msg)` only
+applies a pure XOR before calling `A`, so it makes exactly as many uniform-sampling queries as
+`A`. Hence it stays inside any query-bound class `A` is in — efficiency preservation, the
+stream-cipher analogue of `RatchetCost.reduction_queryBound`. -/
+theorem reduction_queryBound (msg : BitVec 64) (A : PRGAdversary (BitVec 64)) (q : ℕ)
+    (hA : ∀ x, IsTotalQueryBound (A x) q) (r : BitVec 64) :
+    IsTotalQueryBound (reduction msg A r) q := hA (r ^^^ msg)
+
+/-- **Security against the query-bounded adversary class (closing the "all adversaries" gap).**
+Unlike `streamGen_secure_asymptotic`, whose PRG premise `hG` is stated against one specific
+reduction, here the PRG hardness assumption `hPRG` is made **relative to an efficiency class** —
+all distinguishers making at most `q sp` uniform-sampling queries — which is the satisfiable
+form of "`G` is a secure PRG" (an unbounded distinguisher breaks any concrete PRG, so the
+all-adversaries reading is vacuous). The reduction is *proved* to stay in that class
+(`reduction_queryBound`), so the cipher is secure against the same query-bounded class. This is
+the stream-cipher analogue of `RatchetCost.ratchet_secure_against_polyQuery`.
+
+(Cost note: `IsTotalQueryBound` counts uniform-sampling oracle queries, the cost measure native
+to `ProbComp` — *not* wall-clock/circuit time; a query-bounded adversary may still do unbounded
+local computation, so this class is strictly larger than PPT. See the README scope notes.) -/
+theorem streamGen_secure_against_queryBounded {S : ℕ → Type} [∀ sp, SampleableType (S sp)]
+    (G : ∀ sp, PRGScheme (S sp) (BitVec 64)) (msg : ℕ → BitVec 64)
+    (A : ∀ _sp, PRGAdversary (BitVec 64))
+    (q : ℕ → ℕ) (hA : ∀ sp x, IsTotalQueryBound (A sp x) (q sp))
+    (ε : ℕ → ℝ≥0∞) (hε : negligible ε)
+    (hPRG : ∀ sp (D : PRGAdversary (BitVec 64)),
+              (∀ x, IsTotalQueryBound (D x) (q sp)) →
+              ENNReal.ofReal ((G sp).prgAdvantage D) ≤ ε sp) :
+    negligible fun sp => ENNReal.ofReal ((streamGen (G sp) (msg sp)).prgAdvantage (A sp)) := by
+  refine negligible_of_le (fun sp => ?_) hε
+  rw [streamGen_advantage (G sp) (msg sp) (A sp)]
+  exact hPRG sp (reduction (msg sp) (A sp))
+    (fun r => reduction_queryBound (msg sp) (A sp) (q sp) (hA sp) r)
 
 end StreamSecurity

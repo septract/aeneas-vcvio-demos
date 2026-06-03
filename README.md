@@ -125,7 +125,16 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   defining the pure `chachaPure` that faithfully *is* the extracted function (`chachaPure_spec`);
   the generic hybrid theorems then instantiate at `G := chachaPure`. The extracted node performs
   genuine cryptographic arithmetic, with "ChaCha20 keyed by the chain key is a PRG" as the
-  standard, named hardness assumption.
+  standard, named hardness assumption. **Functional correctness of the ARX core**
+  (`RatchetChacha.quarter_spec`) additionally proves the extracted quarter-round computes *exactly*
+  the RFC 8439 §2.1 add/xor/rotate formula on `BitVec 32` — strictly beyond totality — so the named
+  assumption attaches to the genuine ChaCha quarter-round, not an unspecified total function.
+  (The security theorem is *generic over* `G` by design: that is the correct shape of a reduction —
+  "ChaCha20 is a PRG" is necessarily a hardness *assumption*, not a theorem. A numeric known-answer
+  test and full-block all-inputs functional correctness are impractical in-kernel under the
+  no-cheating gate — Aeneas extracts the round loop via `partial_fixpoint`, which does not reduce
+  definitionally, and `native_decide`/`bv_decide` are gate-forbidden; full-block correctness via
+  loop invariants is scoped, honest, future work. See `Chacha.lean`'s header.)
 - **Demo 3 (cost adequacy) — `RatchetCost.ratchet_secure_against_polyQuery`** (conditional),
   backed by `reduction_queryBound`. This makes the reduction's efficiency a *theorem* and the
   PRG assumption *relative to an adversary class*. In the pure `ProbComp` model the cost measure
@@ -227,9 +236,17 @@ correct. They are the foundation for the eventual protocol-security results — 
 agreement (an AKE / session-key-indistinguishability game for PQXDH) and secure-channel /
 ratchet security (an SCKA game for SPQR) — whose security games themselves are future work.
 
+> **Trust chain for these nodes (read the table cells with this in mind).** The kernel + axiom
+> gate certify `P(extracted Lean)` (the totality/byte-layout theorems). Aeneas/Charon (an *(X)*
+> trusted, unverified extractor) certify `extracted Lean = the analog Rust` in `demos/rust/`. The
+> remaining link — **`analog Rust = deployed libsignal/SPQR`** — is *not* machine-checked: it is an
+> agent-authored, per-site `XREF`-tagged correspondence against pinned upstream, the dominant
+> supervisory surface for these nodes (a *(C)* item in `TRUST.md`). A green `make verify` says
+> nothing about that last link; it must be reviewed by hand.
+
 | Node | File | Extracted Rust (mirrors) | Property proved |
 |---|---|---|---|
-| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse); the **full HKDF secret-input byte layout** (both paths) `0xFF³² ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS`, and the **associated data** `AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B)` — the byte-layout glue the Bhargavan et al. (USENIX'24) re-encapsulation attack lived in. Also the **full initiator/recipient key agreement** (`pqxdh_initiate`/`pqxdh_accept`): the X25519 agreements, ML-KEM-1024 encaps/decaps, and HKDF are invoked at their faithful **call sites**, so the key→leg wiring (which key produces which DH leg, in which order, into the KDF) is extracted Rust — plus the recipient's `is_canonical` base-key guard. The primitives are `#[charon::opaque]` = five **named hardness-floor axioms** (the gate's one documented exception, see `TRUST.md`); value-adequacy is proved relative to them |
+| PQXDH key schedule | `Demos/Pqxdh/KeySchedule.lean` | `pqxdh.rs` (libsignal `pqxdh.rs` + `curve.rs`) | the discontinuity prefix is all-`0xFF`; the 96-byte HKDF output splits to exactly `(root_key, chain_key, pqr_key)` (`derive_arrays`); **`DecodeEC ∘ EncodeEC = id`** (spec §2.1 inverse); the **full HKDF secret-input byte layout** (both paths) `0xFF³² ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS`, and the **associated data** `AD = EncodeEC(IK_A) ‖ EncodeEC(IK_B)` — the same domain-separation / transcript byte-layout layer in which the Bhargavan et al. (USENIX'24) re-encapsulation attack arose (caveat: the attack-relevant fix — binding the KEM public key `PQSPK` into the `AD` — is **not** modeled here; the modeled secret input carries the shared secret `SS` and the `AD` is the identity-key binding only, i.e. the pre-fix shape). Also the **full initiator/recipient key agreement** (`pqxdh_initiate`/`pqxdh_accept`): the X25519 agreements, ML-KEM-1024 encaps/decaps, and HKDF are invoked at their faithful **call sites**, so the key→leg wiring (which key produces which DH leg, in which order, into the KDF) is extracted Rust — plus the recipient's `is_canonical` base-key guard. The primitives are `#[charon::opaque]` = five **named hardness-floor axioms** (the gate's one documented exception, see `TRUST.md`); value-adequacy is proved relative to them |
 | SPQR GF(2¹⁶) arithmetic | `Demos/Spqr/Gf.lean` | `gf.rs` (SPQR `encoding/gf.rs`, the portable path Signal's hax/F\* build verifies) | **value adequacy** (totality) of the genuine carryless multiply + table reduction: `gf_add` is XOR, `gf_mul`/`poly_reduce`/`gf_div` are total `u16` functions — the SPQR analog of the ChaCha node |
 | SPQR authenticator glue | `Demos/Spqr/Authenticator.lean` | `authenticator.rs` (SPQR `authenticator.rs` + `util.rs`) | big-endian epoch encoding is total; the `KDF_AUTH` output splits to the two 32-byte halves; the update IKM is **`root_key ‖ k`** (the documented salt/IKM swap vs. the spec prose); the constant-time comparator leaves its accumulator unchanged on equal MACs **and rejects (returns nonzero on) any tag that differs at some byte** (`compare_reject`/`inz` — the unforgeability direction); the MAC-input builders (`mac_hdr`, `mac_ct` over the full `ct1‖ct2`) are total |
 
@@ -257,8 +274,10 @@ irrelevant to cryptographic correctness; everything above the floor we extract a
 of that floor we extract and prove total: the SHA-256 algorithm itself, HMAC's two-pass, the
 encrypt-then-MAC AEAD glue, the PQXDH/SPQR key-schedule and domain-separation byte layouts, the
 EC codec round-trip, and the GF/RS field-and-polynomial arithmetic. That is deliberately the
-**error-dense layer**: the published PQXDH attack was a domain-separation bug in exactly this
-glue, not in any primitive.
+**error-dense layer**: the published PQXDH re-encapsulation attack (Bhargavan et al., USENIX'24)
+was a transcript-binding / domain-separation bug in this *class* of glue, not in any primitive —
+though the specific binding it turned on (the KEM public key `PQSPK` in the `AD`) lies just beyond
+what these nodes currently model, which is the pre-fix `SS`/identity-key layout (see `TRUST.md`).
 
 The SHA-256 / HMAC / HKDF / AEAD vertical is **variable-length and functionally identical**
 (`sha256`, `hmac_sha256_var`, `hkdf_extract`, `hkdf_expand_96`, `etm_*_var`): the full
@@ -349,12 +368,19 @@ proof; each is either an explicit premise or an out-of-model assumption.
 - **Cost measure is query count, not running time.** The cost-adequacy result (`Cost.lean`)
   bounds the reduction in the cost notion native to the pure `ProbComp` model — number of queries
   to the uniform-sampling oracle (`IsTotalQueryBound`) — and proves security against the
-  *poly-query* adversary class. That is the relevant cost measure here, but it is **not** a
-  wall-clock/circuit-time bound, and `keyCost` (the per-sample query cost) is established as a
-  finite constant (`exists_totalQueryBound`) without computing its value. The other demos' base
-  advantage (`prgAdvantage`) still quantifies over *all* adversaries — only the ratchet adds the
-  cost-bounded statement. Closing the gap to a genuine time/circuit cost model is the
-  "cost adequacy" hinge of `docs/2026-05-29_rough_theory.md` §8.
+  *poly-query* / query-bounded adversary class. That is the relevant cost measure here, but it is
+  **not** a wall-clock/circuit-time bound: a query-bounded adversary may still do *unbounded local
+  computation* between oracle queries, so the **query-bounded class is strictly larger than PPT**
+  ("secure against query-bounded distinguishers" ⊉ "secure against poly-*time* distinguishers").
+  `keyCost` (the per-sample query cost) is established as a finite constant (`exists_totalQueryBound`)
+  without computing its value. The stream cipher (`StreamCipher/{Word,ByteArray}.lean`,
+  `streamGen_secure_against_queryBounded`) and ratchet (`Cost.lean`,
+  `ratchet_secure_against_polyQuery`) state security **relative to this query-bounded class** — the
+  satisfiable form of the PRG assumption, since against *all* (unbounded) adversaries no concrete PRG
+  is secure and the unqualified "`G` is a PRG" premise is vacuous; the other demos' headline advantage
+  (`prgAdvantage`) is still stated against all adversaries as a *conditional reduction*. Closing the
+  gap to a genuine time/circuit cost model is the "cost adequacy" hinge of
+  `docs/2026-05-29_rough_theory.md` §8.
 - **The extracted primitive is fixed-width.** The hybrid is proved *width-agnostic*
   (`Generic.lean`), so the security argument does not depend on the 32/64-byte widths — but the
   committed *extracted* node (ChaCha20) is inherently fixed-width (256-bit key / 512-bit block),

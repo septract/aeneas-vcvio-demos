@@ -1,6 +1,9 @@
 # Trust Ledger
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02 (audit-fixes branch: outside-view-audit remediations — de-claimed the
+BJKS attribution to PQXDH glue; added ChaCha quarter-round functional correctness, class-relative
+stream-cipher security, the FS⇒keystream implication; clarified the FS modeling choice and the
+SUF-CMA rule adjudication).*
 
 This file tracks **where the demos introduce trust** — the surfaces a reader must believe in
 order to believe the headline theorems mean what we say they mean. It exists because the
@@ -17,7 +20,7 @@ of the wrong definition is worthless, and the kernel cannot tell the difference.
   `Pqxdh.pqxdh_accept_total`) additionally depend on five *named* hardness-floor axioms — the opaque
   X25519 / ML-KEM / HKDF / EC-canonicity primitives (`pqxdh.x25519_agree`, `mlkem_encapsulate`,
   `mlkem_decapsulate`, `hkdf_sha256_derive`, `ec_is_canonical`). `scripts/audit.sh` *confines* them
-  to exactly those two theorems (any leakage into the other 85 fails the gate), so the strict
+  to exactly those two theorems (any leakage into the other 90 fails the gate), so the strict
   3-axiom guarantee still holds everywhere else. See the PQXDH/SPQR node section below.
 - **Does NOT cover:** definitional adequacy (does our game/scheme model the real notion?), the
   faithfulness of Aeneas extraction, or the named hardness assumptions. Those are tracked here.
@@ -80,6 +83,29 @@ Headlines: `StreamSecurity.streamGen_advantage`, `…_secure_asymptotic`, and th
 
 Headlines: `ratchet_advantage_le_sum`, `chacha_ratchet_*`, `RatchetCost.*`, `RatchetFS.*`, `RatchetGeneric.*`. Again, **no defined-here security game** — only constructions/reductions over trusted games.
 
+### Forward secrecy (`RatchetFS.fsGen`): a (C) modeling choice over a *trusted* game, not a new definition
+
+A reviewer flagged forward secrecy as a possible self-written security definition. It is **not**:
+`fsGen` is an *instance* of VCVio's trusted `PRGScheme` (class (T)) — the generator that, from a
+seed chain key, outputs the joint value `(message-key prefix, surviving chain key) =
+(keystream G j ck₀, ck_j)`. The FS theorems (`fs_advantage_le_sum`, `fs_secure_asymptotic`, …) are
+statements about *this generator's pseudorandomness*, via VCVio's own `prgAdvantage`; the
+"no defined-here game" property holds here too.
+
+What *is* a **(C) modeling choice** is the reading "**this generator is pseudorandom ⇒ forward
+secrecy**". We model FS as: the earlier message keys look uniform *even jointly with* the
+surviving (compromised) chain key `ck_j`. Joint pseudorandomness of `(prefix, ck_j)` is a
+**sufficient condition** for the textbook FS notion (an adversary given `ck_j` cannot distinguish
+an earlier message key from uniform — it implies that conditional-indistinguishability game by
+marginalizing on `ck_j`), matching the standard forward-secrecy intuition for a symmetric KDF chain
+(cf. Cohn-Gordon, Cremers, Dowling, Garratt, Stebila, *A Formal Security Analysis of the Signal
+Messaging Protocol*, EuroS&P 2017 — the Double Ratchet's KDF-chain forward secrecy). It is a
+*modeling choice* surfaced here for a cryptographer to confirm: the kernel checks the
+pseudorandomness theorem, **not** that the modeling captures the intended FS notion.
+`RatchetFS.ratchet_advantage_eq_fs` machine-checks that the joint statement is strictly *stronger*
+than the plain keystream result (projecting away `ck_j` recovers it). If a more conservative stance
+is preferred, treat the FS *interpretation* (not the theorem) as pending cryptographer sign-off.
+
 ## Demo 4 — Message authentication / PRF-MAC (`Demos/AuthChannel/*`)
 
 | Surface | Class | Notes / precedent |
@@ -116,6 +142,17 @@ it gets explicit justification:
 
 A non-cryptographer supervisor can validate (2) and (3) mechanically; (1) is the precedent that
 makes the notion the right one.
+
+**Rule adjudication.** Under the project's "no novel security definitions without precedent"
+practice, `SUF_CMA_Exp` was *consciously adjudicated as the permitted precedent-boundary case* —
+extending a trusted game by a single predicate, with textbook precedent and behavioural anchoring —
+not a violation; this is exactly the edge the rule is meant to allow, and a cryptographer can
+adjudicate it in minutes (a 1-predicate delta from a trusted game). **Scope (no-verify-oracle
+variant).** `SUF_CMA_Exp` is the single-verification-attempt variant: the adversary makes its tag
+queries, then submits one `(msg, τ)` forgery — there is **no separate verification oracle** (it
+inherits VCVio's `MacAlg` adversary interface). Hence the `1/|Tag| = 2⁻²⁵⁶` term is *per attempt*;
+a multi-verification-query variant (carrying a `q_v/|Tag|` factor) is a standard strengthening that
+is out of scope here.
 
 ---
 
@@ -160,7 +197,7 @@ Layer-0 extractor, plus the hardness floor:
 | Surface | Class | Notes / precedent |
 |---|---|---|
 | **Faithfulness of the Rust mirror to upstream** — `demos/rust/{pqxdh,spqr}/*.rs` mirror pinned libsignal `5441a83` (v0.94.3) / SPQR `f2589fe` (v1.5.1) | **(C)** ⚠️ | the **key supervisory surface** for these nodes. The correspondence is agent-authored and machine-uncheckable; it is recorded per-site as `XREF: file:lines @commit [class]` tags (`grep -rn XREF demos/rust`). Almost all are `[type-only]` (`Vec`→fixed array, `GF16`→`u16`, `Result`→`Option`, `repr(C)` reinterpret→slice copy, Horner↔power-table); a reviewer checks each tag against the cited upstream lines. The divergence classes are defined in each file header. |
-| **The spec *statements* are the intended ones** — the PQXDH HKDF secret-input layout `0xFF³² ‖ DH1‖DH2‖DH3[‖DH4]‖SS`, `AD = EncodeEC(IK_A)‖EncodeEC(IK_B)`, `DecodeEC∘EncodeEC = id`, the `KDF_AUTH` split, the chain-step formula | **(C)** | not games, but each is a place to check the *statement*, not just the proof. Anchored to the PQXDH spec / SPQR source each cites; the byte ordering is exactly the part the Bhargavan et al. (USENIX '24) re-encapsulation attack turned on, so it is the high-value thing to read. |
+| **The spec *statements* are the intended ones** — the PQXDH HKDF secret-input layout `0xFF³² ‖ DH1‖DH2‖DH3[‖DH4]‖SS`, `AD = EncodeEC(IK_A)‖EncodeEC(IK_B)`, `DecodeEC∘EncodeEC = id`, the `KDF_AUTH` split, the chain-step formula | **(C)** | not games, but each is a place to check the *statement*, not just the proof. Anchored to the PQXDH spec / SPQR source each cites; these byte layouts are the same domain-separation / transcript-binding layer in which the Bhargavan et al. (USENIX '24) re-encapsulation attack arose, so they are the high-value thing to read — **but note** the specific binding the attack turned on (the KEM public key `PQSPK` in the `AD`) is *not* among these statements: the modeled `AD` is the identity-key binding only and the secret input carries the shared secret `SS`, i.e. the pre-fix layout. |
 | `decode_ec` `[domain-restricted]` to exactly `[u8;33]` (vs upstream `&[u8]` ≥33, trailing bytes tolerated) | (C)/note | forced by the Aeneas fragment (no variable-length slices); upstream's own TODO is to reject trailing bytes, so the mirror models the intended-stricter behaviour. The only sub-domain restriction; **no `[bug]`-class divergence is open**. |
 | **Hardness floor below the nodes** — X25519/Gap-DH, ML-KEM/Module-LWE (IND-CCA), AES-as-PRP, SHA-256-*compression*-as-PRF/RO | **(A)** | assumed, not extracted — the leaves the eventual reductions bottom out on. In the PQXDH key agreement these are **`#[charon::opaque]` call sites**, which Aeneas emits as five named Lean `axiom`s (`pqxdh.x25519_agree`, `mlkem_encapsulate`, `mlkem_decapsulate`, `hkdf_sha256_derive`, `ec_is_canonical`); `scripts/audit.sh` allows them **only** in `pqxdh_initiate_total`/`pqxdh_accept_total` (the documented gate exception). In the SPQR typestate ML-KEM appears **only as a typed boundary** (a VCVio `KeyEncapMech`), not yet under any security claim. |
 

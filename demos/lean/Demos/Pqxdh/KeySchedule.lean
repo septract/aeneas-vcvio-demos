@@ -8,8 +8,15 @@
   (`[0xFF;32] ‖ DH1 ‖ DH2 ‖ DH3 [‖ DH4] ‖ SS`), splitting the 96-byte HKDF output
   into `(root_key, chain_key, pqr_key)`, and the `EncodeEC`/`DecodeEC` codec.
   The DH / KEM / HKDF primitives are external; this is the glue around them — the
-  error-dense layer the Bhargavan et al. (USENIX'24) re-encapsulation attack lived
-  in.
+  same error-dense domain-separation / transcript-binding layer in which the
+  Bhargavan et al. (USENIX'24) re-encapsulation attack arose. **Scope caveat:** the
+  fix that attack motivated — binding the KEM public key `PQSPK` (and/or the KEM
+  ciphertext) into the transcript — is *not* modeled here. The modeled secret input
+  carries the KEM *shared secret* `SS`, and the modeled `AD` carries only the
+  identity keys (`IK_A ‖ IK_B`), i.e. the **pre-fix** shape whose omission of
+  `PQSPK` the attack exploited. So these nodes capture the surrounding glue, not the
+  specific binding the re-encapsulation attack turned on (see the note on
+  `associated_data_spec`).
 
   We prove functional correctness of the security-relevant byte layouts:
   the discontinuity prefix is all-`0xFF`, the **full secret-input assembly** is exactly
@@ -19,8 +26,8 @@
   exactly the three 32-byte slices (`HandshakeKeys::derive_with_label`'s `derive_arrays`), and
   `DecodeEC ∘ EncodeEC = id` (the inverse law the spec §2.1 mandates and the AD construction
   relies on). These subsume value adequacy (a `spec`-triple obligation rules out `fail`/`div`).
-  The secret-input layout is the KDF-input premise the AKE proof rests on, and its segment
-  ordering is the part the Bhargavan et al. re-encapsulation attack turned on.
+  The secret-input layout is the KDF-input premise the AKE proof rests on (subject to the
+  scope caveat above — the attack-relevant `PQSPK` binding is not among these segments).
 -/
 import Demos.Extracted.Pqxdh
 
@@ -38,7 +45,8 @@ theorem to_slice_val {n : Std.Usize} (a : Array Std.U8 n) :
 /-- The discontinuity-prefix loop fills bytes `0..32` of the secret buffer with
 `0xFF` (X3DH/PQXDH "discontinuity bytes"), leaving it total. This is the leading
 block of `pqxdh_secret_input`; the remaining `put32` copies (which thread `&mut`
-slices) are value-adequate by the same shape but their slice spec is future work. -/
+slices) are fully specified below in `pqxdh_secret_input_spec`, which proves the
+entire secret-input layout — every `put32` window, not just this prefix. -/
 theorem secret_prefix_loop_spec :
     ∀ (out : Array Std.U8 160#usize) (i : Std.Usize), i.val ≤ 32 →
       (∀ j, j < i.val → out.val[j]! = 255#u8) →
@@ -341,8 +349,9 @@ theorem decode_encode_roundtrip (key : Array Std.U8 32#usize) :
 /-- **Functional correctness of the PQXDH secret input (no one-time prekey).** The 160-byte
 HKDF secret input is exactly `[0xFF;32] ‖ DH1 ‖ DH2 ‖ DH3 ‖ SS` — the discontinuity prefix
 followed by the four 32-byte DH/KEM segments at their offsets. This is the KDF-input layout the
-AKE proof's key-derivation premise rests on (the segment ordering is the BJKS-attack-relevant
-part). -/
+AKE proof's key-derivation premise rests on. (NB: the BJKS re-encapsulation attack turned on
+binding the KEM public key `PQSPK` into the transcript — *not* on the ordering of these `DH`/`SS`
+segments, which is what is proved here; `SS` is the shared secret, and no `PQSPK` is present.) -/
 theorem pqxdh_secret_input_spec (dh1 dh2 dh3 ss : Array Std.U8 32#usize) :
     pqxdh.pqxdh_secret_input dh1 dh2 dh3 ss
       ⦃ r => (∀ j, j < 32 → r.val[j]! = 255#u8) ∧
@@ -557,8 +566,10 @@ theorem associated_data_loop_spec (a b : Array Std.U8 33#usize) :
 /-- **Functional correctness of the associated data.** `associated_data` is exactly
 `EncodeEC(IK_A) ‖ EncodeEC(IK_B)` — two 33-byte wire keys (each tagged `0x05`) concatenated:
 byte 0 = `0x05`, bytes `1..33` = `IK_A`, byte 33 = `0x05`, bytes `34..66` = `IK_B`. This is the
-identity-binding `AD` the PQXDH transcript MACs, and the exact construction the Bhargavan et al.
-re-encapsulation attack targeted. -/
+identity-binding `AD` the PQXDH transcript MACs. (NB: the Bhargavan et al. re-encapsulation attack
+turned precisely on this `AD` *not* binding the KEM public key `PQSPK`; the layout proved here is
+the identity-key binding only — the **pre-fix** shape — so it models the surrounding glue, not the
+PQSPK-in-AD fix the attack motivated, which is future work.) -/
 theorem associated_data_spec (ika ikb : Array Std.U8 32#usize) :
     pqxdh.associated_data ika ikb
       ⦃ r => r.val[0]! = pqxdh.KEY_TYPE_DJB ∧

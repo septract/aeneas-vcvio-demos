@@ -6,13 +6,14 @@
 # and no custom/extra axioms of any kind. Exits non-zero otherwise.
 #
 # ONE DOCUMENTED EXCEPTION (the cryptographic hardness floor): the PQXDH key-agreement
-# orchestration theorems (`Pqxdh.pqxdh_initiate_total` / `Pqxdh.pqxdh_accept_total`) extract the
-# real call sites of the opaque primitives X25519 / ML-KEM / HKDF / EC-canonicity, which Aeneas
-# emits as named Lean `axiom`s. Those — and ONLY those five named primitive axioms, and ONLY in
-# those two theorems — are additionally permitted. The check below ENFORCES that confinement:
-# if any of the five floor axioms appears in any OTHER headline theorem, the gate fails. So the
-# strong "only the 3 standard axioms" guarantee still holds for all the other (90) theorems,
-# and the floor axioms are exactly the assumed hardness primitives, surfaced explicitly.
+# orchestration/correctness theorems (`Pqxdh.pqxdh_initiate_total` / `Pqxdh.pqxdh_accept_total` and
+# the two correctness headlines `Pqxdh.pqxdh_keys_agree_no_opk` / `Pqxdh.pqxdh_keys_agree_with_opk`)
+# extract / reason over the real call sites of the opaque primitives X25519 / ML-KEM / HKDF /
+# EC-canonicity, which Aeneas emits as named Lean `axiom`s. Those — and ONLY those five named
+# primitive axioms, and ONLY in those four theorems — are additionally permitted. The check below
+# ENFORCES that confinement: if any of the five floor axioms appears in any OTHER headline theorem,
+# the gate fails. So the strong "only the 3 standard axioms" guarantee still holds for all the other
+# theorems, and the floor axioms are exactly the assumed hardness primitives, surfaced explicitly.
 #
 # NOTE: Lean pretty-prints long axiom lists across MULTIPLE lines, so we flatten the output to a
 # single line before extracting axiom names (an earlier single-line `sed` silently missed a
@@ -27,8 +28,11 @@ STANDARD='propext|Classical.choice|Quot.sound'
 # The named hardness-floor primitive axioms (extracted from the #[charon::opaque] primitives).
 FLOOR='pqxdh\.x25519_agree|pqxdh\.mlkem_encapsulate|pqxdh\.mlkem_decapsulate|pqxdh\.hkdf_sha256_derive|pqxdh\.ec_is_canonical'
 # The ONLY theorems permitted to additionally depend on the FLOOR axioms (exact names).
-FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total'
-EXPECTED=92  # number of 'depends on axioms' report lines expected (one per headline theorem)
+# The four PQXDH orchestration/correctness theorems: the two totality envelopes and the two
+# key-agreement correctness headlines (which take the floor properties as hypotheses on the agreed
+# legs — those hypotheses mention the opaque primitives, so the floor axioms appear transitively).
+FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total|Pqxdh\.pqxdh_keys_agree_no_opk|Pqxdh\.pqxdh_keys_agree_with_opk'
+EXPECTED=128  # number of 'depends on axioms' report lines expected (one per headline theorem)
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

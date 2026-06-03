@@ -520,4 +520,275 @@ theorem decode_value_at_total (xs ys : Array Std.U16 36#usize) (n : Std.Usize) (
   unfold gf.decode_value_at
   step*
 
+/-! ### Algebraic content: pure field operations and the Horner-fold value spec
+
+The totality results above certify the extracted code denotes total `u16` functions. The next
+layer of the Reed–Solomon correctness story is *algebraic*: characterizing **what value** the
+extracted loops compute, as explicit recurrences over the field operations. The genuinely deep
+endpoint (`decode ∘ encode = id`) additionally needs the GF(2¹⁶) field laws (associativity,
+distributivity, inverses — exactly what Signal proves against `Spec.GF16` in F\*, and which the
+header of this file flags as a separate, heavier obligation). Here we bank the algebraic *value
+specs* that do **not** require those field laws: the extracted field multiply is a deterministic
+pure function (`gfMulV`), and `poly_eval` is **exactly** the Horner fold over it. -/
+
+/-- The extracted field multiply, read as a pure `u16 → u16 → u16` (the value of the
+`Result`, or `0#u16` on the never-taken failure branch). -/
+def gfMulV (a b : Std.U16) : Std.U16 :=
+  match gf.gf_mul a b with
+  | .ok c => c
+  | _ => 0#u16
+
+/-- The extracted field add is XOR (proved as `gf_add_total`); its pure value is `a ^^^ b`. -/
+def gfAddV (a b : Std.U16) : Std.U16 := a ^^^ b
+
+/-- **Value spec of the field multiply.** `gf_mul a b` succeeds with value `gfMulV a b` — so the
+extracted carryless-multiply-then-reduce denotes the pure binary operation `gfMulV`. -/
+theorem gf_mul_eq (a b : Std.U16) : gf.gf_mul a b = .ok (gfMulV a b) := by
+  have := gf_mul_total a b
+  unfold gfMulV
+  cases h : gf.gf_mul a b with
+  | ok c => rfl
+  | div => simp [h] at this
+  | fail e => simp [h] at this
+
+/-- **Value spec of the field add.** `gf_add a b` succeeds with value `gfAddV a b = a ^^^ b`. -/
+theorem gf_add_eq (a b : Std.U16) : gf.gf_add a b = .ok (gfAddV a b) := by
+  unfold gf.gf_add gfAddV; rfl
+
+/-- The Horner accumulator the encoder's evaluation loop computes. Mirrors `poly_eval_loop`
+*exactly*: started at accumulator `acc` and index `i`, each step folds in one more coefficient
+from the top, `acc ↦ gfAddV (gfMulV acc x) coeffs[i-1]`, decrementing `i`. -/
+def hornerV (coeffs : Array Std.U16 36#usize) (x : Std.U16) : Std.U16 → Nat → Std.U16
+  | acc, 0 => acc
+  | acc, (i + 1) => hornerV coeffs x (gfAddV (gfMulV acc x) coeffs.val[i]!) i
+
+/-- **Horner value spec of the evaluation loop.** `poly_eval_loop` computes exactly the pure
+Horner fold `hornerV`: started from accumulator `out` and index `i` (`i ≤ 36`), it returns
+`hornerV coeffs x out i.val`. -/
+theorem poly_eval_loop_eq (coeffs : Array Std.U16 36#usize) (x : Std.U16) :
+    ∀ (out : Std.U16) (i : Std.Usize), i.val ≤ 36 →
+      gf.poly_eval_loop coeffs x out i ⦃ r => r = hornerV coeffs x out i.val ⦄ := by
+  intro out i hi
+  unfold gf.poly_eval_loop
+  apply Std.loop.spec_decr_nat
+    (measure := fun s : Std.U16 × Std.Usize => s.2.val)
+    (inv := fun s : Std.U16 × Std.Usize =>
+      s.2.val ≤ 36 ∧ hornerV coeffs x s.1 s.2.val = hornerV coeffs x out i.val)
+    (post := fun r : Std.U16 => r = hornerV coeffs x out i.val)
+  · rintro ⟨o1, i1⟩ ⟨hi1, hinv⟩
+    simp only [gf.poly_eval_loop.body]
+    split
+    · rename_i hlt
+      -- The loop step folds in one coefficient: rewrite its `gf_mul`/`gf_add` to the pure
+      -- `gfMulV`/`gfAddV`, then recognise the result as one `hornerV` unfolding (`i1 = i2 + 1`).
+      rw [gf_mul_eq]
+      step as ⟨i2, hi2⟩
+      step as ⟨i3, hi3⟩
+      rw [gf_add_eq]
+      refine ⟨by scalar_tac, ?_, by scalar_tac⟩
+      simp only [hinv.symm]
+      have he : i1.val = i2.val + 1 := by scalar_tac
+      conv_rhs => rw [he, hornerV]
+      rw [hi3]
+    · rename_i hge
+      -- `i1 = 0`, so the loop returns its accumulator `o1`, which `hinv` ties back to the start.
+      have h0 : i1.val = 0 := by scalar_tac
+      simp only [h0, hornerV] at hinv
+      exact hinv
+  · exact ⟨hi, rfl⟩
+
+/-- **Horner value spec of `poly_eval` (the encoder's evaluation core).** For degree `deg ≤ 36`,
+`poly_eval coeffs deg x` succeeds with value `hornerV coeffs x 0 deg` — i.e. it computes exactly
+the Horner fold of `coeffs[0..deg)` at `x`, the algebraic content behind the totality result
+`poly_eval_total`. This is the value-level characterization the `decode ∘ encode = id` round-trip
+ultimately builds on (the remaining step — that this fold equals `Σ coeffs[i]·x^i` and inverts
+Lagrange interpolation — additionally needs the GF(2¹⁶) field laws, separate future work). -/
+theorem poly_eval_eq (coeffs : Array Std.U16 36#usize) (deg : Std.Usize) (x : Std.U16)
+    (hdeg : deg.val ≤ 36) :
+    gf.poly_eval coeffs deg x ⦃ r => r = hornerV coeffs x 0#u16 deg.val ⦄ := by
+  unfold gf.poly_eval
+  exact poly_eval_loop_eq coeffs x 0#u16 deg hdeg
+
+/-! ### Pointwise value specs: polynomial add and scalar multiply -/
+
+/-- `poly_add_loop` fills `out[k] = a[k] ^^^ b[k]` for `k < 36`, preserving entries already set. -/
+theorem poly_add_loop_eq (a b : Array Std.U16 36#usize) :
+    ∀ (out : Array Std.U16 36#usize) (i : Std.Usize), i.val ≤ 36 →
+      (∀ k, k < i.val → out.val[k]! = a.val[k]! ^^^ b.val[k]!) →
+      gf.poly_add_loop a b out i
+        ⦃ r => ∀ k, k < 36 → r.val[k]! = a.val[k]! ^^^ b.val[k]! ⦄ := by
+  intro out i hi hpre
+  unfold gf.poly_add_loop
+  apply Std.loop.spec_decr_nat
+    (measure := fun s : (Array Std.U16 36#usize) × Std.Usize => 36 - s.2.val)
+    (inv := fun s : (Array Std.U16 36#usize) × Std.Usize =>
+      s.2.val ≤ 36 ∧ (∀ k, k < s.2.val → s.1.val[k]! = a.val[k]! ^^^ b.val[k]!))
+    (post := fun r : Array Std.U16 36#usize =>
+      ∀ k, k < 36 → r.val[k]! = a.val[k]! ^^^ b.val[k]!)
+  · rintro ⟨o1, i1⟩ ⟨hi1, hpre1⟩
+    simp only [gf.poly_add_loop.body, gf.POLY_COEFFS]
+    split
+    · rename_i hlt
+      step as ⟨v1, hv1⟩
+      step as ⟨v2, hv2⟩
+      rw [gf_add_eq]
+      step as ⟨o2, ho2⟩
+      step as ⟨i4, hi4⟩
+      refine ⟨by scalar_tac, ?_, by scalar_tac⟩
+      intro k hk
+      subst ho2
+      by_cases hke : k = i1.val
+      · subst hke; simp_lists [hv1, hv2]; unfold gfAddV; rfl
+      · have : k < i1.val := by scalar_tac
+        simp_lists; exact hpre1 k this
+    · rename_i hge
+      intro k hk; apply hpre1; scalar_tac
+  · exact ⟨hi, hpre⟩
+
+/-- **Pointwise value spec of `poly_add`** (`Poly::add_assign`): coefficient `k` of the result is
+`a[k] ^^^ b[k]` — characteristic-2 polynomial addition. -/
+theorem poly_add_eq (a b : Array Std.U16 36#usize) :
+    gf.poly_add a b ⦃ r => ∀ k, k < 36 → r.val[k]! = a.val[k]! ^^^ b.val[k]! ⦄ := by
+  unfold gf.poly_add
+  apply poly_add_loop_eq a b _ 0#usize (by scalar_tac)
+  intro k hk; scalar_tac
+
+/-- `poly_scale_loop` fills `out[k] = gfMulV a[k] m` for `k < 36`. -/
+theorem poly_scale_loop_eq (a : Array Std.U16 36#usize) (m : Std.U16) :
+    ∀ (out : Array Std.U16 36#usize) (i : Std.Usize), i.val ≤ 36 →
+      (∀ k, k < i.val → out.val[k]! = gfMulV a.val[k]! m) →
+      gf.poly_scale_loop a m out i
+        ⦃ r => ∀ k, k < 36 → r.val[k]! = gfMulV a.val[k]! m ⦄ := by
+  intro out i hi hpre
+  unfold gf.poly_scale_loop
+  apply Std.loop.spec_decr_nat
+    (measure := fun s : (Array Std.U16 36#usize) × Std.Usize => 36 - s.2.val)
+    (inv := fun s : (Array Std.U16 36#usize) × Std.Usize =>
+      s.2.val ≤ 36 ∧ (∀ k, k < s.2.val → s.1.val[k]! = gfMulV a.val[k]! m))
+    (post := fun r : Array Std.U16 36#usize =>
+      ∀ k, k < 36 → r.val[k]! = gfMulV a.val[k]! m)
+  · rintro ⟨o1, i1⟩ ⟨hi1, hpre1⟩
+    simp only [gf.poly_scale_loop.body, gf.POLY_COEFFS]
+    split
+    · rename_i hlt
+      step as ⟨v1, hv1⟩
+      rw [gf_mul_eq]
+      step as ⟨o2, ho2⟩
+      step as ⟨i4, hi4⟩
+      refine ⟨by scalar_tac, ?_, by scalar_tac⟩
+      intro k hk
+      subst ho2
+      by_cases hke : k = i1.val
+      · subst hke; simp_lists [hv1]
+      · have : k < i1.val := by scalar_tac
+        simp_lists; exact hpre1 k this
+    · rename_i hge
+      intro k hk; apply hpre1; scalar_tac
+  · exact ⟨hi, hpre⟩
+
+/-- **Pointwise value spec of `poly_scale`** (`Poly::mult_assign`): coefficient `k` of the result
+is the field product `gfMulV a[k] m`. -/
+theorem poly_scale_eq (a : Array Std.U16 36#usize) (m : Std.U16) :
+    gf.poly_scale a m ⦃ r => ∀ k, k < 36 → r.val[k]! = gfMulV a.val[k]! m ⦄ := by
+  unfold gf.poly_scale
+  apply poly_scale_loop_eq a m _ 0#usize (by scalar_tac)
+  intro k hk; scalar_tac
+
+/-! ### Value spec of `mult_xdiff_trailing` (multiply a trailing sub-polynomial by `(x - c)`)
+
+`mult_xdiff_trailing coeffs len start difference` carries one step of polynomial multiplication by
+`(x - difference)`: over the window `start-1 ≤ j < len-1` it sets coefficient `j` to
+`coeffs[j] ⊕ difference · coeffs[j+1]` (the carry of the higher coefficient into the lower one,
+characteristic-2), leaving all coefficients outside the window unchanged. Because every write
+targets index `j-1 < j` while every read targets `j ≥ start`, the reads always see the *original*
+`coeffs` values — the spec is therefore a clean closed form over `coeffs`, not the running array. -/
+
+/-- The window-update closed form computed by `mult_xdiff_trailing`. -/
+def xdiffStep (coeffs : Array Std.U16 37#usize) (len start : Std.Usize) (difference : Std.U16)
+    (j : Nat) : Std.U16 :=
+  if start.val - 1 ≤ j ∧ j < len.val - 1 then
+    coeffs.val[j]! ^^^ gfMulV coeffs.val[j + 1]! difference
+  else coeffs.val[j]!
+
+theorem mult_xdiff_trailing_loop_eq (coeffs : Array Std.U16 37#usize) (len start : Std.Usize)
+    (difference : Std.U16) (hlen : len.val ≤ 37) (hstart : 1 ≤ start.val) :
+    ∀ (out : Array Std.U16 37#usize) (i : Std.Usize), start.val ≤ i.val → i.val ≤ len.val →
+      -- updated region [start-1, i-1); everything else still equals `coeffs`
+      (∀ j, j < 37 →
+        out.val[j]! = if start.val - 1 ≤ j ∧ j < i.val - 1 then
+          coeffs.val[j]! ^^^ gfMulV coeffs.val[j + 1]! difference else coeffs.val[j]!) →
+      gf.mult_xdiff_trailing_loop len difference out i
+        ⦃ r => ∀ j, j < 37 → r.val[j]! = xdiffStep coeffs len start difference j ⦄ := by
+  intro out i hsi hil hinv
+  unfold gf.mult_xdiff_trailing_loop
+  apply Std.loop.spec_decr_nat
+    (measure := fun s : (Array Std.U16 37#usize) × Std.Usize => len.val - s.2.val)
+    (inv := fun s : (Array Std.U16 37#usize) × Std.Usize =>
+      start.val ≤ s.2.val ∧ s.2.val ≤ len.val ∧
+      (∀ j, j < 37 →
+        s.1.val[j]! = if start.val - 1 ≤ j ∧ j < s.2.val - 1 then
+          coeffs.val[j]! ^^^ gfMulV coeffs.val[j + 1]! difference else coeffs.val[j]!))
+    (post := fun r : Array Std.U16 37#usize =>
+      ∀ j, j < 37 → r.val[j]! = xdiffStep coeffs len start difference j)
+  · rintro ⟨o1, i1⟩ ⟨hsi1, hil1, hinv1⟩
+    simp only [gf.mult_xdiff_trailing_loop.body]
+    split
+    · rename_i hlt
+      -- read o1[i1] = coeffs[i1] (i1 ≥ i1-1, original region)
+      step as ⟨v1, hv1⟩
+      rw [gf_mul_eq]
+      step as ⟨delta, hdelta⟩
+      step as ⟨i3, hi3⟩
+      rw [gf_add_eq]
+      step as ⟨o2, ho2⟩
+      step as ⟨i5, hi5⟩
+      have hv1c : v1 = coeffs.val[i1.val]! := by
+        rw [hv1, hinv1 i1.val (by scalar_tac)]
+        rw [if_neg (by scalar_tac)]
+      have hi3c : i3 = coeffs.val[i1.val - 1]! := by
+        rw [hi3, hdelta, hinv1 (i1.val - 1) (by scalar_tac)]
+        rw [if_neg (by scalar_tac)]
+      refine ⟨by scalar_tac, by scalar_tac, ?_, by scalar_tac⟩
+      intro j hj
+      subst ho2
+      by_cases hje : j = delta.val
+      · subst hje
+        simp_lists
+        rw [gfAddV, hi3c, hv1c, hdelta]
+        have hin : start.val - 1 ≤ i1.val - 1 ∧ i1.val - 1 < i5.val - 1 := by
+          constructor <;> scalar_tac
+        rw [if_pos hin]
+        have he : i1.val - 1 + 1 = i1.val := by scalar_tac
+        rw [he]
+      · simp_lists
+        rw [hinv1 j hj]
+        by_cases hc : start.val - 1 ≤ j ∧ j < i1.val - 1
+        · rw [if_pos hc, if_pos ⟨hc.1, by scalar_tac⟩]
+        · rw [if_neg hc]
+          rw [if_neg (by
+            rintro ⟨h1, h2⟩
+            apply hc; exact ⟨h1, by scalar_tac⟩)]
+    · rename_i hge
+      intro j hj
+      rw [hinv1 j hj]
+      unfold xdiffStep
+      have : i1 = len := by scalar_tac
+      subst this
+      rfl
+  · exact ⟨hsi, hil, hinv⟩
+
+/-- **Value spec of `mult_xdiff_trailing`.** Over the window `start-1 ≤ j < len-1`, coefficient `j`
+becomes `coeffs[j] ⊕ difference · coeffs[j+1]`; outside the window it is unchanged. This is one
+step of multiplication by `(x - difference)` over GF(2¹⁶). -/
+theorem mult_xdiff_trailing_eq (coeffs : Array Std.U16 37#usize) (len start : Std.Usize)
+    (difference : Std.U16) (hlen : len.val ≤ 37) (hstart : 1 ≤ start.val)
+    (hsl : start.val ≤ len.val) :
+    gf.mult_xdiff_trailing coeffs len start difference
+      ⦃ r => ∀ j, j < 37 → r.val[j]! = xdiffStep coeffs len start difference j ⦄ := by
+  unfold gf.mult_xdiff_trailing
+  apply mult_xdiff_trailing_loop_eq coeffs len start difference hlen hstart coeffs start
+    (by scalar_tac) hsl
+  intro j hj
+  rw [if_neg (by rintro ⟨_, h⟩; scalar_tac)]
+
 end Spqr.Gf

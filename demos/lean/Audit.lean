@@ -14,14 +14,20 @@ import Demos.Ratchet.Cost
 import Demos.Ratchet.ForwardSecrecy
 import Demos.Ratchet.Generic
 import Demos.Pqxdh.KeySchedule
+import Demos.Pqxdh.Correctness
 import Demos.Spqr.Gf
 import Demos.Spqr.Authenticator
+import Demos.Spqr.AuthMac
 import Demos.AuthChannel.Mac
 import Demos.AuthChannel.SufCma
 import Demos.AuthChannel.MacCost
 import Demos.KemDem.Composition
 import Demos.Spqr.States
+import Demos.Spqr.StatesGraph
 import Demos.Crypto.Sha256
+import Demos.Crypto.Hkdf
+import Demos.Crypto.HmacPrf
+import Demos.Spqr.ChainSplit
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -108,6 +114,17 @@ import Demos.Crypto.Sha256
 #print axioms Pqxdh.pqxdh_initiate_total
 #print axioms Pqxdh.pqxdh_accept_total
 
+-- PQXDH key-agreement CORRECTNESS (functional, no security game): for corresponding parameters,
+-- pqxdh_initiate and pqxdh_accept derive IDENTICAL HandshakeKeys. The X25519 symmetry
+-- (dh(a,pub b)=dh(b,pub a)) on the three/four matched legs and ML-KEM round-trip (decaps recovers
+-- the encaps shared secret) are supplied as explicit HYPOTHESES on exactly the agreed legs — no new
+-- axiom. Both roles assemble the same secret_input (building on pqxdh_secret_input_spec), feed the
+-- same deterministic HKDF, derive_split the same okm; key-equality follows by congruence. These two
+-- headlines also bottom out on the five gate-confined PQXDH floor axioms (the opaque primitives
+-- appear in the leg/decaps hypotheses), so they join the FLOOR_OK confinement set in audit.sh.
+#print axioms Pqxdh.pqxdh_keys_agree_no_opk
+#print axioms Pqxdh.pqxdh_keys_agree_with_opk
+
 -- SPQR node (GF(2^16) field arithmetic): value adequacy (totality) of the genuine carryless
 -- multiply + table reduction Signal's own hax/F* build verifies — gf_add is XOR, gf_mul/
 -- poly_reduce/gf_div are total pure functions on u16.
@@ -133,6 +150,20 @@ import Demos.Crypto.Sha256
 #print axioms Spqr.Auth.mac_hdr_data_total
 #print axioms Spqr.Auth.mac_ct_data_total
 
+-- SPQR Ratcheted-Authenticator MAC as a VCVio `MacAlg` (UF-CMA over the extracted constant-time
+-- comparator). REUSES VCVio's TRUSTED `MacAlg`/`MacAlg.UF_CMA` game verbatim (no new game). The
+-- canonical PRF-MAC `tag k m = F_k(m)`, `verify = (compare F_k(m) t == 0)`, packaged as a
+-- `MacAlg ProbComp M K Tag` over SPQR's `authenticator::compare` (0 = accept, the inverse polarity
+-- of Demo 4's Bool verify). `compare_accept`: equal tags accept (the accept counterpart of the
+-- already-landed `compare_reject`). `compareB_eq_true_iff`: the comparator's Boolean view decides
+-- tag equality (value adequacy — accept iff equal; forged/altered tags rejected via compare_reject).
+-- `spqrMacAlg_perfectlyComplete`: honest tags always verify (perfect completeness, uniform-key PRF).
+-- The full UF-CMA *bound* is Demo 4's chain over the same MacAlg shape; this banks the SPQR-side
+-- instance + completeness/verify-adequacy glue.
+#print axioms Spqr.AuthMac.compare_accept
+#print axioms Spqr.AuthMac.compareB_eq_true_iff
+#print axioms Spqr.AuthMac.spqrMacAlg_perfectlyComplete
+
 -- Round 2 — crypto primitive nodes (the construction-tower extraction).
 -- SHA-256: faithful FIPS 180-4 compression (genuine ARX, the hash floor).
 #print axioms Sha256.sha256_compress_total
@@ -152,6 +183,64 @@ import Demos.Crypto.Sha256
 #print axioms Sha256.hkdf_expand_64_total
 #print axioms Sha256.spqr_chain_next_total
 
+-- HKDF RFC 5869 FUNCTIONAL specs (Demos/Crypto/Hkdf.lean — value layer over totality, NO security
+-- game). `hkdf_extract_eq`: HKDF-Extract is definitionally `PRK = HMAC(salt, ikm)` (RFC 5869 §2.2).
+-- `hkdf_t1_msg_spec` / `hkdf_tn_msg_spec`: the HKDF-Expand block-input buffers are exactly
+-- `info ‖ ctr` resp. `prev ‖ info ‖ ctr` over their live prefix (the `T(i) = HMAC(prk, T(i-1)‖info‖i)`
+-- inputs, T(0) empty). `hkdf_expand_64_spec` / `hkdf_expand_96_spec`: the extracted expand outputs
+-- are `T(1)‖T(2)[‖T(3)]` with each block the HMAC of `prk` over the corresponding T-input buffer —
+-- RFC 5869 §2.3 T-chaining truncated to 64/96 bytes (SPQR KDF_AUTH / PQXDH derive). SHA-256-as-PRF
+-- remains the named floor; these are functional-correctness theorems (3 standard axioms only).
+#print axioms Sha256.hkdf_extract_eq
+#print axioms Sha256.hkdf_t1_msg_spec
+#print axioms Sha256.hkdf_tn_msg_spec
+#print axioms Sha256.hkdf_expand_64_spec
+#print axioms Sha256.hkdf_expand_96_spec
+
+-- Crypto functional specs the reductions lean on (byte layouts, NO security game):
+-- the HMAC padded-key block K0⊕pad is `(key[i]⊕pad) ‖ pad^32` (key_pad_block_spec), and the full
+-- HMAC two-pass byte equation hmac_sha256_var = H((K0⊕opad) ‖ H((K0⊕ipad) ‖ msg)) over the genuine
+-- extracted two-pass code (hmac_sha256_var_byte_eq) — the byte shape HmacPrf's `hmacSpec` lifts,
+-- with the two distinct pads 0x36=54 (ipad) / 0x5c=92 (opad). These feed the hmac-prf reduction.
+#print axioms Sha256.key_pad_block_spec
+#print axioms Sha256.hmac_sha256_var_byte_eq
+
+-- HMAC-is-a-PRF (Bellare CRYPTO 2006), PARTIAL: the Merkle–Damgård cascade / NMAC infrastructure
+-- and the closable reduction steps, all over VCVio's TRUSTED `PRFScheme`/`prfAdvantage` (reused
+-- verbatim — NO new security game). `cascade_append`: the Merkle–Damgård splitting identity the
+-- hybrid iterates over. `prfAdvantage_congr`: the principled bridge — equal keygen+eval ⇒ equal
+-- distinguishing advantage against every adversary (the rewrite step every reduction rests on).
+-- `cascade1_prfAdvantage_eq`: the base case — the single-block cascade PRF has EXACTLY the
+-- compression PRF's advantage (ε = 0, the leaf the hybrid sum bottoms out on).
+-- `cascadePRF_prfAdvantage_congr`: the multi-block analogue (variable-length domain).
+-- `hmacSpec_eq`/`hmac_pads_distinct`: the functional spec `H((k⊕opad)‖H((k⊕ipad)‖m))` and its
+-- two-distinct-pads pin. NOT closed: the multi-block hybrid sum bounding the full cascade advantage
+-- by q·(compression advantage), and HMAC = NMAC∘key-derivation — paper-sized, left as future work.
+#print axioms HmacPrf.cascade_append
+#print axioms HmacPrf.prfAdvantage_congr
+#print axioms HmacPrf.cascade1_prfAdvantage_eq
+#print axioms HmacPrf.cascadePRF_prfAdvantage_congr
+#print axioms HmacPrf.hmacSpec_eq
+#print axioms HmacPrf.hmac_pads_distinct
+
+-- SPQR chain-step output split (structural / value adequacy — NO security game). The extracted
+-- output-split loop carves the 64-byte HKDF block into new_next = genr8r[0..32] and out_key =
+-- genr8r[32..64] (value spec, stronger than the audited totality); the resulting pure split is
+-- definitionally the SAME byte-split as Demo 3's RatchetSecurity.splitPure, hence the length-
+-- doubling bijection Blk64 ≃ Key × Key that the width-generic ratchet hybrid consumes (reusing
+-- splitPure_bijective verbatim). Banks the split-shape fit; the full advantage bound is NOT reached
+-- (SPQR's per-step generator is counter-indexed, so it does not instantiate the step-invariant
+-- RatchetGeneric hybrid — see ChainSplit.lean scope note).
+#print axioms Spqr.ChainSplit.spqr_chain_next_loop2_split_spec
+#print axioms Spqr.ChainSplit.spqrSplit_eq_splitPure
+#print axioms Spqr.ChainSplit.spqrSplit_bijective
+-- The chain-step split FORMULA on the whole `spqr_chain_next` (functional, NO security): the call
+-- advances the counter to ctr+1 and emits (new_next, out_key) = (genr8r[0..32], genr8r[32..64]),
+-- where genr8r is PINNED to the actual HKDF-Expand block (the statement exhibits the computed
+-- prk/info4 and asserts hkdf_expand_64 prk info4 35 = ok genr8r — so the split is of the real
+-- cryptographic block, not an arbitrary array) — the layout the SCKA output_key production rests on.
+#print axioms Spqr.ChainSplit.spqr_chain_next_split_spec
+
 -- SPQR Reed-Solomon codec field core: polynomial evaluation (encoder chunk generation),
 -- pointwise add, and scalar multiply over GF(2^16) — all total.
 #print axioms Spqr.Gf.poly_eval_total
@@ -170,6 +259,22 @@ import Demos.Crypto.Sha256
 #print axioms Spqr.Gf.compute_at_total
 #print axioms Spqr.Gf.decode_value_at_total
 
+-- SPQR Reed-Solomon codec — ALGEBRAIC value specs (the layer above totality: WHAT the loops
+-- compute, as closed-form recurrences over the field ops, NO security game). The field multiply is
+-- a deterministic pure function `gfMulV`; on top of it: `poly_eval_eq` — the encoder's evaluation
+-- loop computes EXACTLY the Horner fold `hornerV coeffs x 0 deg` (= the polynomial value at x);
+-- `poly_add_eq` — pointwise characteristic-2 sum `a[k] ⊕ b[k]`; `poly_scale_eq` — pointwise field
+-- product `gfMulV a[k] m`; `mult_xdiff_trailing_eq` — one step of multiply-by-(x-c): over the window
+-- `start-1 ≤ j < len-1`, coefficient j becomes `coeffs[j] ⊕ gfMulV coeffs[j+1] difference`, else
+-- unchanged. NB: the full `decode∘encode=id` round-trip additionally needs the GF(2^16) FIELD LAWS
+-- (assoc/distrib/inverse — what Signal proves against Spec.GF16 in F*); these value specs are the
+-- field-law-free algebraic backbone it builds on, banked here. (Reduces decode∘encode=id to:
+-- gfMulV/⊕ form a field + Lagrange-interpolation correctness over Mathlib's `Lagrange`.)
+#print axioms Spqr.Gf.poly_eval_eq
+#print axioms Spqr.Gf.poly_add_eq
+#print axioms Spqr.Gf.poly_scale_eq
+#print axioms Spqr.Gf.mult_xdiff_trailing_eq
+
 -- SPQR typestate skeleton (the SCKA construction's transition structure): send/recv are total
 -- pure dispatches over the 11-state machine (next state + emitted payload + output-key timing),
 -- vulnerable_epoch is the total leakage predicate. This is what the SCKA security game binds to;
@@ -179,6 +284,34 @@ import Demos.Crypto.Sha256
 #print axioms Spqr.States.vulnerable_epoch_total
 #print axioms Spqr.States.init_a_total
 #print axioms Spqr.States.init_b_total
+
+-- SPQR typestate GRAPH lemmas (structural properties of the 11-state transition graph — what a
+-- future SCKA game quantifies over; NO security game, value-level facts over the extracted dispatch).
+-- (1) OUTPUT-KEY EMISSION TIMING. The transition functions return an output-key flag (the SCKA
+-- "an output_key was produced this step" bit). send_step raises it for EXACTLY one state,
+-- HeaderReceived (send_step_outputs_key_iff; the explicit emission send_step_headerReceived →
+-- Ct1Sampled; and send_step_no_key_of_ne for the other ten). recv_step raises it for EXACTLY the
+-- path EkSentCt1Received + in-window Ct2 + Done + accept (recv_step_outputs_key_iff; the explicit
+-- emission recv_step_ekSentCt1Received_done → NoHeaderReceived; recv_step_no_key_of_ne elsewhere).
+#print axioms Spqr.States.send_step_outputs_key_iff
+#print axioms Spqr.States.send_step_headerReceived
+#print axioms Spqr.States.send_step_no_key_of_ne
+#print axioms Spqr.States.recv_step_outputs_key_iff
+#print axioms Spqr.States.recv_step_ekSentCt1Received_done
+#print axioms Spqr.States.recv_step_no_key_of_ne
+-- (2) vulnerable_epoch TRACKS THE COMPROMISE SET. It is `none` for EXACTLY the three no-live-secret
+-- states (KeysUnsampled / NoHeaderReceived / HeaderReceived — vulnerable_epoch_none_iff) and
+-- `some s.epoch` for the other eight key-holding states (vulnerable_epoch_some_iff), always at the
+-- state's OWN epoch, never a stale one (vulnerable_epoch_eq_epoch — no past-epoch leakage).
+#print axioms Spqr.States.vulnerable_epoch_none_iff
+#print axioms Spqr.States.vulnerable_epoch_some_iff
+#print axioms Spqr.States.vulnerable_epoch_eq_epoch
+-- (3) COUPLING (output flag × vulnerability). A key-emitting send lands in a vulnerable state at the
+-- same epoch (send_step_output_target_vulnerable); the unique key-emitting recv is the round-CLOSING
+-- key — it lands in the NoHeaderReceived reset (vulnerable_epoch = none), the dual structural fact
+-- (recv_step_output_target_reset).
+#print axioms Spqr.States.send_step_output_target_vulnerable
+#print axioms Spqr.States.recv_step_output_target_reset
 
 -- Demo 4 (message authentication): the extracted MAC `verify` is total and decides tag
 -- equality (value adequacy), its Boolean view decides equality, and the canonical PRF-based

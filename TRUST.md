@@ -200,6 +200,7 @@ Layer-0 extractor, plus the hardness floor:
 | **The spec *statements* are the intended ones** — the PQXDH HKDF secret-input layout `0xFF³² ‖ DH1‖DH2‖DH3[‖DH4]‖SS`, `AD = EncodeEC(IK_A)‖EncodeEC(IK_B)`, `DecodeEC∘EncodeEC = id`, the `KDF_AUTH` split, the chain-step formula | **(C)** | not games, but each is a place to check the *statement*, not just the proof. Anchored to the PQXDH spec / SPQR source each cites; these byte layouts are the same domain-separation / transcript-binding layer in which the Bhargavan et al. (USENIX '24) re-encapsulation attack arose, so they are the high-value thing to read — **but note** the specific binding the attack turned on (the KEM public key `PQSPK` in the `AD`) is *not* among these statements: the modeled `AD` is the identity-key binding only and the secret input carries the shared secret `SS`, i.e. the pre-fix layout. |
 | `decode_ec` `[domain-restricted]` to exactly `[u8;33]` (vs upstream `&[u8]` ≥33, trailing bytes tolerated) | (C)/note | forced by the Aeneas fragment (no variable-length slices); upstream's own TODO is to reject trailing bytes, so the mirror models the intended-stricter behaviour. The only sub-domain restriction; **no `[bug]`-class divergence is open**. |
 | **Hardness floor below the nodes** — X25519/Gap-DH, ML-KEM/Module-LWE (IND-CCA), AES-as-PRP, SHA-256-*compression*-as-PRF/RO | **(A)** | assumed, not extracted — the leaves the eventual reductions bottom out on. In the PQXDH key agreement these are **`#[charon::opaque]` call sites**, which Aeneas emits as five named Lean `axiom`s (`pqxdh.x25519_agree`, `mlkem_encapsulate`, `mlkem_decapsulate`, `hkdf_sha256_derive`, `ec_is_canonical`); `scripts/audit.sh` allows them **only** in `pqxdh_initiate_total`/`pqxdh_accept_total` (the documented gate exception). In the SPQR typestate ML-KEM appears **only as a typed boundary** (a VCVio `KeyEncapMech`), not yet under any security claim. |
+| **SPQR authenticator MAC as a VCVio `MacAlg`** (`Demos/Spqr/AuthMac.lean`) — the canonical PRF-MAC `tag k m = F_k(m)`, `verify = (compare F_k(m) t == 0)`, packaged as `MacAlg ProbComp M K Tag` over the **extracted** constant-time comparator `authenticator::compare` | **(T)**-reused + (C)-construction | the game is VCVio's `MacAlg`/`MacAlg.UF_CMA` reused **verbatim** — **no new game**. `spqrMacAlg` is a construction over the trusted game; `compare_accept` (equal⇒0, the accept counterpart of the landed `compare_reject`) and `compareB_eq_true_iff` (the comparator decides tag equality) are the value-adequacy glue that pin it to the extracted Rust; `spqrMacAlg_perfectlyComplete` is perfect completeness (uniform-key PRF). The full UF-CMA *bound* is Demo 4's chain (`AuthChannel/SufCma.lean`) over the *same* `MacAlg` shape; this banks the SPQR-side instance + completeness/verify-adequacy. The **`F` is a PRF** assumption is the same (A) as Demo 4 (HMAC-SHA256). |
 
 Headlines (all totality / functional-correctness — **no security**): PQXDH key schedule
 (`secret_prefix_loop_spec`, `derive_split_spec`, `encode_ec_spec`, `decode_encode_roundtrip`,
@@ -213,7 +214,9 @@ field/codec/decoder (`gf_*_total`, `poly_*_total`, `mult_xdiff_trailing_total`, 
 `complete_total`, `lagrange_interpolate_total`, `compute_at_total`, `decode_value_at_total`); SPQR
 authenticator glue (`epoch_to_be_bytes_total`, `update_split_spec`, `auth_update_ikm_spec`,
 `compare_loop_refl`, `inz_spec`, `compare_reject`, `auth_update_info_total`, `mac_hdr_data_total`,
-`mac_ct_data_total`); SHA-256/HMAC/HKDF/AEAD + SPQR chain step (`sha256_compress_total`,
+`mac_ct_data_total`; and the SPQR MAC-as-`MacAlg` glue `Spqr.AuthMac.compare_accept`,
+`Spqr.AuthMac.compareB_eq_true_iff`, `Spqr.AuthMac.spqrMacAlg_perfectlyComplete` — reusing VCVio's
+trusted `MacAlg` game verbatim, no new game); SHA-256/HMAC/HKDF/AEAD + SPQR chain step (`sha256_compress_total`,
 `sha256_total`, `hmac_sha256_var_total`, `hkdf_extract_total`, `hkdf_expand_96_total`,
 `hkdf_expand_64_total`, `etm_encrypt_var_total`, `etm_decrypt_var_total`, `spqr_chain_next_total`);
 and the SPQR typestate (`send_step_total`, `recv_step_total`, `vulnerable_epoch_total`,
@@ -237,7 +240,26 @@ improvise. They are recorded here so the boundary is explicit.
 |---|---|
 | PQXDH **KEM⊕DH robust combiner** (key pseudorandom under KEM-IND-CCA *or* DH) | a specialized security model with no trusted reference; needs the combiner game defined/audited by a cryptographer (cf. PQXDH CryptoVerif analysis; Bindel et al. hybrid-KEX; Giacon–Heuer–Poettering KEM combiners) |
 | **Encrypt-then-MAC AEAD** | the EtM construction is already extracted and totality-proved (`Sha256.lean` `etm_*`); what's deferred is the *security game* — VCVio has no computational IND-CPA / INT-CTXT / AE game for *symmetric* encryption (only perfect secrecy), so it would require ~3 new game definitions — textbook, but enough invention to want a cryptographer to bless them first |
-| **HMAC-is-a-PRF** | SHA-256 and the two-pass HMAC are already extracted and totality-proved (`Sha256.lean`); what's deferred is the *reduction* — deep, novel infrastructure (Merkle–Damgård cascade, dual-PRF) that discharges Demo 4's (A) assumption down to the SHA-256 compression function, but is paper-sized |
+| **HMAC-is-a-PRF** | SHA-256 and the two-pass HMAC are already extracted and totality-proved (`Sha256.lean`); the *reduction* (Merkle–Damgård cascade, dual-PRF; Bellare CRYPTO 2006) is **partially landed** — see the HMAC-PRF row below. What remains deferred is the multi-block hybrid sum and the HMAC = NMAC∘key-derivation step (paper-sized, needs a cryptographer's blessing of the hybrid accounting) |
+
+### HMAC-is-a-PRF cascade infrastructure (`Demos/Crypto/HmacPrf.lean`) — partial
+
+A **partial** discharge of Demo 4's (A) "`F` is a PRF" assumption toward the SHA-256 *compression*
+function. **No new security game** is defined — every advantage is VCVio's trusted `PRFScheme` /
+`prfAdvantage` reused verbatim (class T). The landed pieces:
+
+| Surface | Class | Notes |
+|---|---|---|
+| `cascade` / `cascadePRF` / `compressionPRF` / `cascade1PRF` — the Merkle–Damgård fold of a compression `f : K → Block → K` and its packaging as a `PRFScheme` | (C) | constructions over the trusted `PRFScheme`, not games |
+| `prfAdvantage_congr` — equal `keygen`+`eval` ⇒ equal `prfAdvantage` against every adversary | (T)-derived | the principled rewrite bridge; pure consequence of the VCVio definitions |
+| `cascade1_prfAdvantage_eq` — **base case**: the single-block cascade PRF has *exactly* the compression PRF's advantage (ε = 0) | (C) | the leaf the hybrid sum bottoms out on; fully closed |
+| `cascadePRF_prfAdvantage_congr`, `cascade_append`, `cascade_congr` — the cascade algebra / splitting identity the hybrid iterates over | (C) | fully closed |
+| `hmacSpec` / `nmacSpec` / `hmacSpec_eq` / `hmac_pads_distinct` — the functional spec `H((k⊕opad)‖H((k⊕ipad)‖m))` and the two-distinct-pads pin | (C) | the byte-level shape of the extracted `hmac_sha256_var`, stated abstractly |
+| **Not closed:** the multi-block hybrid bound `cascade advantage ≤ q · (compression advantage)`; the HMAC = NMAC∘key-derivation reduction; the link from the *extracted* `sha256`/`hmac_sha256_var` (monadic, bounded arrays) to the abstract `cascade` | **(open)** | the genuinely deep part — reported honestly as remaining |
+
+Headlines: `HmacPrf.cascade_append`, `HmacPrf.prfAdvantage_congr`, `HmacPrf.cascade1_prfAdvantage_eq`,
+`HmacPrf.cascadePRF_prfAdvantage_congr`, `HmacPrf.hmacSpec_eq` (and the no-axiom pin
+`HmacPrf.hmac_pads_distinct`). All depend only on `[propext, Classical.choice, Quot.sound]`.
 | **Multi-user UF-CMA** | a new (multi-key) game |
 
 **The supervisability boundary ≈ the precedent boundary.** Work that reuses a trusted VCVio game,

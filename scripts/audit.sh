@@ -32,7 +32,7 @@ FLOOR='pqxdh\.x25519_agree|pqxdh\.mlkem_encapsulate|pqxdh\.mlkem_decapsulate|pqx
 # key-agreement correctness headlines (which take the floor properties as hypotheses on the agreed
 # legs — those hypotheses mention the opaque primitives, so the floor axioms appear transitively).
 FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total|Pqxdh\.pqxdh_keys_agree_no_opk|Pqxdh\.pqxdh_keys_agree_with_opk'
-EXPECTED=143  # number of 'depends on axioms' report lines expected (one per headline theorem)
+EXPECTED=166  # number of 'depends on axioms' report lines expected (one per headline theorem)
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

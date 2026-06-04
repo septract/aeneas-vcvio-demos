@@ -32,6 +32,11 @@ import Demos.Ratchet.GenericIndexed
 import Demos.Spqr.RatchetPrg
 import Demos.Spqr.Gf16Field
 import Demos.Spqr.RsBridge
+import Demos.Spqr.RsInterp
+import Demos.Spqr.Gf16Mul
+import Demos.Spqr.Gf16Reduce
+import Demos.Spqr.Gf16FieldAssembly
+import Demos.Spqr.RsCapstone
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -322,6 +327,73 @@ import Demos.Spqr.RsBridge
 #print axioms Spqr.Gf16Field.gfAddV_self
 #print axioms Spqr.Gf16Field.toPoly_gfAddV
 
+-- SPQR Reed-Solomon codec — Layer B-mul (PARTIAL), STAGE 1: the MULTIPLICATIVE side's first stage,
+-- the carryless-multiply = polynomial-product half of the GF(2^16) ring bridge. About the extracted
+-- carryless multiply `gf.poly_mul` (the `u32` half of `gf_mul = poly_reduce ∘ poly_mul`):
+--   poly_mul_spec — VALUE SPEC of the extracted `gf.poly_mul`: it succeeds with the explicit
+--     carryless XOR-fold `clmulPartial a.val b.val 16` = ⊕_{shift<16, b.testBit shift} (a << shift),
+--     the same field-law-free "what value the loop computes" style as the banked value specs — a
+--     result directly about `gf.poly_mul`;
+--   toPoly32_polyMulV — STAGE 1 of B-mul: under the bit↔coefficient embeddings (toPoly : U16 → (ZMod 2)[X],
+--     toPoly32 : U32 → (ZMod 2)[X]), the extracted carryless multiply (read as the value `polyMulV a b`
+--     of `gf.poly_mul`) denotes EXACTLY the polynomial product: toPoly32 (polyMulV a b) = toPoly a * toPoly b.
+--     Proved STRUCTURALLY from the carryless XOR-fold matched against Polynomial.coeff_mul (char-2
+--     convolution) — no field laws, no value-space decide, no axiom. This is the multiplicative half's
+--     first stage of the ring-iso U16 ≅ (ZMod 2)[X]/(POLY). NB: STAGE 2 (poly_reduce = remainder mod
+--     POLY_poly, the table-fold residue-correctness) and Irreducible POLY_poly remain the documented
+--     OPEN obligations — NOT closed here, NOT faked.
+#print axioms Spqr.Gf16Mul.poly_mul_spec
+#print axioms Spqr.Gf16Mul.toPoly32_polyMulV
+
+-- SPQR Reed-Solomon codec — Layer B-mul, the CODE DECOMPOSITION of the extracted field multiply,
+-- plus the PRECISE localization of the remaining multiplicative gap (Spqr.Gf16Reduce). All
+-- field-law-FREE, about the extracted gf.gf_mul / gf.poly_reduce / gf.poly_mul:
+--   poly_reduce_ok — VALUE SPEC of the extracted table reduction gf.poly_reduce: it succeeds with
+--     the pure value poly_reduceV (from the banked totality poly_reduce_total) — the reduction-side
+--     analog of the banked poly_mul value spec;
+--   gfMulV_decomp — the extracted field multiply, read as the value gfMulV a b (the gf_mul_eq value
+--     spec), is EXACTLY the table reduction of the carryless product: gfMulV a b =
+--     poly_reduceV (polyMulV a b). This pins the gf_mul = poly_reduce ∘ poly_mul decomposition
+--     (Extracted/Gf.lean) at the VALUE level — a result directly about gf.gf_mul/gf.poly_reduce/
+--     gf.poly_mul, NO field laws, NO axiom.
+-- NB: combined with the banked Stage 1 (toPoly32_polyMulV: clmul = poly product), gfMulV_decomp
+-- localizes the field-assembly bridge `hmul` to the SINGLE polynomial statement Stage2
+-- (poly_reduce realizes reduction mod POLY_poly on the embedding) — see Gf16Reduce.stage2_imp_hmul /
+-- hmul_imp_stage2_on_products (building blocks). Stage 2 stays the documented OPEN gap (the 256-entry
+-- table-double-fold = polynomial remainder is the heavier obligation) — NOT closed, NOT faked.
+#print axioms Spqr.Gf16Reduce.poly_reduce_ok
+#print axioms Spqr.Gf16Reduce.gfMulV_decomp
+
+-- SPQR Reed-Solomon codec — Layer B, FIELD ASSEMBLY (CONDITIONAL): the GF(2^16) ring/field laws on
+-- the extracted field arithmetic (gfAddV = gf_add value spec, gfMulV = gf_mul value spec), assembled
+-- along the NON-CIRCULAR route — the field-ness comes from Mathlib's quotient `AdjoinRoot POLY_poly`,
+-- reflected back through the embedding φ = AdjoinRoot.mk POLY_poly ∘ toPoly : U16 → AdjoinRoot POLY_poly.
+-- φ is proved (UNCONDITIONALLY) ADDITIVE (phi_gfAddV, from the banked XOR=poly-add bridge), INJECTIVE
+-- (φ a = φ b forces toPoly a − toPoly b, of degree <16 = natDegree POLY, to be a POLY-multiple hence 0),
+-- and SURJECTIVE (every residue has a degree-<16 representative = toPoly of some U16). The MULTIPLICATIVE
+-- compatibility of φ is exactly the full B-mul bridge (Stage 1 banked + Stage 2 open), carried as the
+-- EXPLICIT, SATISFIABLE hypothesis `hmul : ∀ a b, phi (gfMulV a b) = phi a * phi b` — NEVER an axiom.
+--   phi_gfAddV — UNCONDITIONAL: φ (gfAddV a b) = φ a + φ b (gfAddV = field add is the quotient add);
+--   gfMulV_comm / gfMulV_assoc — CONDITIONAL on hmul: the extracted field-multiply is commutative /
+--     associative, reflected through the injective φ from AdjoinRoot's ring laws (NO irreducibility);
+--   gfMulV_one / gfMulV_one_left — CONDITIONAL on hmul: 1#u16 is a two-sided gfMulV identity;
+--   gfMulV_gfAddV_distrib / _distrib_right — CONDITIONAL on hmul: gfMulV distributes over gfAddV;
+--   gfMulV_exists_inv — CONDITIONAL on hmul AND [Fact (Irreducible POLY_poly)] (B-irr, OPEN): every
+--     nonzero gfMulV-element has a gfMulV-inverse (the FIELD law), via inverting in the field
+--     AdjoinRoot POLY_poly and pulling back through the (unconditional) surjective φ.
+-- NB: both premises are SATISFIABLE (the field really IS GF(2^16) and POLY_poly really is irreducible),
+-- so the conditional theorems are GENUINE and NON-VACUOUS. STAGE 2 of B-mul (poly_reduce = remainder mod
+-- POLY) and Irreducible POLY_poly remain the documented OPEN obligations — NOT closed, NOT faked, NOT
+-- axiomatized. Each headline mentions the extracted gfMulV/gfAddV (the gf_mul/gf_add value specs).
+#print axioms Spqr.Gf16FieldAssembly.phi_gfAddV
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_comm
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_assoc
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_one
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_one_left
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_gfAddV_distrib
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_gfAddV_distrib_right
+#print axioms Spqr.Gf16FieldAssembly.gfMulV_exists_inv
+
 -- SPQR Reed-Solomon codec — Layer C (PARTIAL): value specs of the DECODER's evaluation kernel
 -- `gf.compute_at` (the `decode_value_at` re-evaluation step), extending the banked value-spec style
 -- (poly_eval_eq / mult_xdiff_trailing_eq) to the remaining decoder loops. All field-law-FREE — they
@@ -343,6 +415,70 @@ import Demos.Spqr.RsBridge
 #print axioms Spqr.RsBridge.compute_at_loop1_eq0
 #print axioms Spqr.RsBridge.compute_at_loop0_recurrence
 #print axioms Spqr.RsBridge.compute_at_eq
+
+-- SPQR Reed-Solomon codec — Layer C (PARTIAL), INTERPOLATION side: value specs of the extracted
+-- Lagrange-reconstruction loops (gf.prepare / gf.complete / gf.lagrange_interpolate), the same
+-- field-law-FREE "what value the loop computes" style as the banked poly_eval_eq /
+-- mult_xdiff_trailing_eq / the compute_at specs, in terms of the value specs of the extracted field
+-- ops (gfMulV = gf_mul, gfAddV = gf_add, gfDivV = gf_div):
+--   gf_div_eq — the extracted Fermat-inverse division `gf.gf_div` is the deterministic pure
+--     function `gfDivV` (the multiplicative-side analog of the banked gf_mul_eq, kept OPAQUE);
+--   prepare_loop_eq / prepare_eq — gf.prepare builds PRODUCT_{i<n}(x − xs[i]) by iterating the banked
+--     mult_xdiff_trailing_eq (xdiffStepFn): from the delta array [0,…,0,1,0,…] (1 at index n) it folds
+--     n successive (x − xs[i]) multiplies (prepareFoldFn) — a value spec about gf.prepare / gf.prepare_loop;
+--   complete_loop0_eq / _eq0 — gf.complete's denominator loop computes the running field product
+--     ∏_{j<n, pix≠xs[j]} (pix ⊕ xs[j]) (denomV, a gfMulV-fold of gfAddV factors) — about gf.complete_loop0;
+--   complete_loop1_eq — gf.complete's long-division sweep is the scale-and-carry recurrence divFold:
+--     each step idx = len−j2 sets out[idx] = gfMulV out[idx] scale and out[idx−1] ⊕= gfMulV out[idx] pix
+--     — a value spec about gf.complete_loop1;
+--   complete_eq — assembles gf.complete: it runs divFold on the coefficients with the exact extracted
+--     parameters pix = xs[i], scale = gfDivV ys[i] (denomV …) (the Lagrange coefficient
+--     ys[i] / ∏(xs[i] ⊕ xs[j])), the division kept as the opaque gfDivV value — about gf.complete;
+--   lagrange_interpolate_loop0_eq — the copy/divide-by-x loop shifts working down by one coefficient
+--     (out[k] = working[k+1]) — about gf.lagrange_interpolate_loop0;
+--   lagrange_interpolate_loop1_loop0_eq — the accumulate loop folds one basis term into the running sum
+--     (out[j] ⊕= working[j+1], a gfAddV accumulation) — about gf.lagrange_interpolate_loop1_loop0.
+-- NB: connecting these recurrences to Mathlib's `Lagrange.interpolate` (hence the unconditional
+-- decode∘encode=id about gf.decode_value_at) additionally needs the GF(2^16) FIELD instance — the
+-- documented Gf16Field gap (Irreducible POLY + clmul/reduce). These are the field-law-free backbone.
+#print axioms Spqr.RsInterp.gf_div_eq
+#print axioms Spqr.RsInterp.prepare_loop_eq
+#print axioms Spqr.RsInterp.prepare_eq
+#print axioms Spqr.RsInterp.complete_loop0_eq
+#print axioms Spqr.RsInterp.complete_loop0_eq0
+#print axioms Spqr.RsInterp.complete_loop1_eq
+#print axioms Spqr.RsInterp.complete_eq
+#print axioms Spqr.RsInterp.lagrange_interpolate_loop0_eq
+#print axioms Spqr.RsInterp.lagrange_interpolate_loop1_loop0_eq
+
+-- SPQR Reed-Solomon codec — Layer C, the CAPSTONE about the extracted `gf.decode_value_at`
+-- (Spqr.RsCapstone): the `decode ∘ encode` identity over the genuine reconstruction kernel.
+--   decode_value_at_eq — UNCONDITIONAL, field-law-FREE: `gf.decode_value_at xs ys n x` succeeds
+--     and its value is EXACTLY the field dot product `dotV poly powers n 0 0 = Σ_{k<n} poly[k] ⊗
+--     powers[k]` of the reconstructed coefficient array `poly` (= the value of the extracted
+--     `gf.lagrange_interpolate xs ys n`) against the powers-of-x table (powers[0]=1, powers[1]=x,
+--     squaring recurrence powers[j] = gfMulV powers[j/2] powers[j/2+j%2]). The structural
+--     `decode = evaluate(interpolate)` identity, assembled from the banked RsBridge.compute_at_eq;
+--     it mentions gf.decode_value_at, gf.lagrange_interpolate and (via dotV / the power recurrence)
+--     gf.compute_at's gfMulV/gfAddV value specs. NO field laws, NO axiom, NO value-space decide.
+--   decode_value_at_roundtrip — CONDITIONAL (explicit, satisfiable premises, NOT axioms): the
+--     Reed–Solomon `decode ∘ encode = id` — for DISTINCT nodes (hvs : Set.InjOn node s) and a
+--     codeword `ys` that is the encoder's evaluation of a degree-<n message polynomial f at those
+--     nodes (henc), the extracted gf.decode_value_at xs ys n x — decoded into the field F via the
+--     map `dec` — recovers `eval (dec x) f`. The honest open interpolation-correctness bridge
+--     (`hbridge`: the decoder evaluates Mathlib's Lagrange.interpolate of the decoded samples; it
+--     needs the field laws to identify the prepare/complete/divFold recurrences with the basis
+--     polynomials) is carried as an EXPLICIT, SATISFIABLE hypothesis, never an axiom. The REAL
+--     non-degeneracy hyps hvs (distinct nodes) and hdeg (f.degree < s.card) are kept and USED via
+--     the banked field-generic RsAbstract.decode_eq_eval — dropping either makes recovery FALSE.
+--     hbridge is NOT the conclusion (conclusion = recovers `eval (dec x) f` for the message f), so
+--     the theorem does not secretly assume its own conclusion; all premises are jointly satisfiable
+--     (so non-vacuous). NB: the UNCONDITIONAL round-trip stays open — it needs the field instance
+--     (B-mul Stage 2 + Irreducible POLY_poly, the documented Gf16Field gaps) AND that the extracted
+--     lagrange_interpolate loops compute Lagrange.interpolate; decode_value_at_eq is the
+--     unconditional in-boundary fact this round banks.
+#print axioms Spqr.RsCapstone.decode_value_at_eq
+#print axioms Spqr.RsCapstone.decode_value_at_roundtrip
 
 -- SPQR typestate skeleton (the SCKA construction's transition structure): send/recv are total
 -- pure dispatches over the 11-state machine (next state + emitted payload + output-key timing),

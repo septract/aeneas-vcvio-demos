@@ -21,6 +21,11 @@ import Demos.Spqr.Gf
 import Demos.Spqr.Gf16Field
 import Demos.Spqr.RsBridge
 import Demos.Spqr.RsRoundtrip
+import Demos.Spqr.RsInterp
+import Demos.Spqr.Gf16Mul
+import Demos.Spqr.Gf16Reduce
+import Demos.Spqr.Gf16FieldAssembly
+import Demos.Spqr.RsCapstone
 import Demos.Spqr.Authenticator
 import Demos.Spqr.ChainSplit
 import Demos.Spqr.RatchetPrg

@@ -45,6 +45,8 @@ import Demos.Spqr.RsDivInverse
 import Demos.Spqr.RsPrepareBridge
 import Demos.Spqr.RsCompleteBridge
 import Demos.Spqr.RsLagrangeBridge
+import Demos.Spqr.Gf16IrreducibleMirror
+import Demos.Spqr.Gf16IrreducibleBridge
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -829,3 +831,30 @@ import Demos.Spqr.RsLagrangeBridge
 -- Demo 5 (asymptotic, reusing VCVio's `Negligible`): if the KEM family is IND-CPA-secure and the
 -- PRG family is secure, the composed KEM+DEM PKE family's one-time IND-CPA advantage is negligible.
 #print axioms Demo5KemDem.composed_secure_asymptotic
+
+-- ── B-irr: `Irreducible POLY_poly` closed UNCONDITIONALLY (THE WALL) ──────────────────────────
+-- The last algebraic premise gating an unconditional Reed–Solomon decode∘encode=id over the real
+-- extracted GF(2¹⁶) is `Irreducible (POLY_poly : (ZMod 2)[X])`, POLY_poly = X¹⁶+X¹²+X³+X+1. It is
+-- closed here as a REAL theorem (no `Fact`-hypothesis, no axiom) via a Mathlib-free computable
+-- `List Bool` mirror of F2[x] (`Gf16IrreducibleMirror`): a kernel `decide` checks no monic divisor
+-- of degree 1..8 divides the bit pattern POLY (a reducible degree-16 poly over a field would have
+-- an irreducible factor of degree ≤ 8). The mirror headline depends on NO axioms — it is a pure
+-- kernel Bool reduction (`decide`, NOT `native_decide`).
+#print axioms Spqr.Gf16IrreducibleMirror.noSmallFactor_POLY
+
+-- The transport assembles the mirror result into `(ZMod 2)[X]`: `no_factor_le_8` discharges the
+-- half-degree non-divisibility hypothesis of `Monic.irreducible_iff_lt_natDegree_lt` (natDegree
+-- POLY_poly / 2 = 8, matching the mirror's k = 8), giving `POLY_poly_irreducible` unconditionally.
+-- Only the three standard Mathlib axioms — NO sorryAx, NO ofReduceBool, NO custom axiom.
+#print axioms Spqr.Gf16IrreducibleBridge.no_factor_le_8
+#print axioms Spqr.Gf16IrreducibleBridge.POLY_poly_irreducible
+
+-- The newly-UNCONDITIONAL downstream headlines: with `fact_POLY_poly_irreducible` now a real
+-- (axiom-clean) instance, the seven downstream field/RS files' `[Fact (Irreducible POLY_poly)]`
+-- binders are discharged. These wrappers restate the load-bearing capstones with that binder
+-- DROPPED — the Reed–Solomon decode∘encode=id over the genuine GF(2¹⁶), the GF(2¹⁶) field inverse
+-- via `gf.gf_div`, the nonzero-element inverse, and the Fermat inverse in `AdjoinRoot POLY_poly`.
+#print axioms Spqr.Gf16IrreducibleBridge.decode_value_at_roundtrip_gf16_unconditional
+#print axioms Spqr.Gf16IrreducibleBridge.gf_div_eq_inv_unconditional
+#print axioms Spqr.Gf16IrreducibleBridge.gfMulV_exists_inv_unconditional
+#print axioms Spqr.Gf16IrreducibleBridge.adjoinRoot_pow_eq_inv_unconditional

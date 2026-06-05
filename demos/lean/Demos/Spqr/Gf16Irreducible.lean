@@ -8,20 +8,30 @@
   extracted `gfMulV` are UNCONDITIONAL, and the `decode ∘ encode = id` capstone
   (`RsFieldBridge.decode_value_at_roundtrip_gf16_of_dist`) is conditional on a SINGLE
   remaining algebraic premise: `Irreducible (POLY_poly : (ZMod 2)[X])`, where
-  `POLY_poly = X¹⁶ + X¹² + X³ + X + 1`. This is the documented WALL (see `Gf16Field.lean` §4):
+  `POLY_poly = X¹⁶ + X¹² + X³ + X + 1`. This was the documented WALL (see `Gf16Field.lean` §4)
+  — now CLOSED UNCONDITIONALLY in `Gf16IrreducibleBridge.lean`
+  (`Spqr.Gf16IrreducibleBridge.POLY_poly_irreducible`). The route:
 
-    * plain `decide` is genuinely dead on `(ZMod 2)[X]` (the `Finsupp`/`AddMonoidAlgebra`
-      representation does not kernel-reduce — verified at `coeff 0`);
-    * a computable Nat/BitVec mirror with a carryless `%` and a `decide` over the
-      ≈510 degree-≤8 candidates is ALSO kernel-infeasible: although a single
-      `Nat.log2 69643` DOES kernel-check, it takes ≈109 s, so the full mirror `decide`
-      either deterministic-times-out or is silently turned into `sorryAx` by the
-      elaborator (VERIFIED this round: even the 4-candidate degree-2 mirror check
-      reported `depends on axioms: [propext, sorryAx]` under a real `lake build`).
-      `lean_run_code`'s native evaluator gives a FALSE positive here — only the kernel
-      `#print axioms` is authoritative.
+    * plain `decide` IS genuinely dead on `(ZMod 2)[X]` (the `Finsupp`/`AddMonoidAlgebra`
+      representation does not kernel-reduce — verified at `coeff 0`); that obstruction is real.
+    * A `Nat`/`BitVec` bit-trick mirror was ALSO kernel-infeasible: its `decide` recursed
+      through `Nat.bitwise` (a single `Nat.log2 69643` already took ≈109 s), so the full
+      mirror `decide` deterministic-timed-out / degenerated to `sorryAx` under a real
+      `lake build`. **That failure was specific to the `Nat`/`BitVec` representation.**
+    * The WORKING route (in `Gf16IrreducibleMirror.lean`) is a `List Bool` mirror of `F2[x]`
+      (coeffs low-to-high, `true = 1`, `xor = +`) with schoolbook polynomial remainder. Its
+      headline `noSmallFactor POLY 8 = true` — "no monic divisor of degree `1..8` divides
+      `POLY`" — kernel-`decide`s in a few seconds and reports NO axioms at all (pure kernel
+      Bool reduction; verified by `#print axioms`, NOT by the native evaluator, which had
+      given a false positive on the old `Nat` mirror). `Gf16IrreducibleBridge.lean` then
+      transports this to `(ZMod 2)[X]` (a `toPoly` map, the `bmod = %ₘ` correspondence, and
+      enumeration completeness) and assembles `Irreducible POLY_poly` via
+      `Monic.irreducible_iff_lt_natDegree_lt` — `#print axioms` shows only the three standard
+      Mathlib axioms (`propext, Classical.choice, Quot.sound`), no `sorryAx`/`ofReduceBool`.
 
-  So the honest, sound route to irreducibility is structural factor-exclusion: a monic
+  The structural factor-exclusion lemmas banked below remain valid, kernel-checked
+  CORROBORATION (they are now subsumed by the bridge's uniform all-monics `decide`). For the
+  record, the original structural argument: a monic
   degree-16 polynomial over a field is irreducible iff it has no monic factor of degree
   `1..8` (`Polynomial.Monic.irreducible_iff_lt_natDegree_lt`). This file banks the
   factor-exclusion STRATA proved structurally — no `decide` over `(ZMod 2)[X]`, no
@@ -71,17 +81,17 @@
   `GF(2¹⁶)` — verified off-line by the Rabin test; these lemmas are the sound, kernel-checked
   Lean witnesses of that fact's computational content.)
 
-  It does NOT YET assemble into the single term `Irreducible POLY_poly`. The remaining step is
-  the COMPLETENESS bridge: `Monic.irreducible_iff_lt_natDegree_lt` requires `¬ q ∣ POLY_poly`
-  for EVERY monic `q` (not just the listed irreducibles) of degree `1..8`. Via
-  `Polynomial.exists_monic_irreducible_factor` any such `q | POLY_poly` would have a monic
-  irreducible factor `g | POLY_poly` of degree `≤ 8`, so the assembly reduces to: *every* monic
-  irreducible of degree `1..8` over `ZMod 2` equals one of the 63 listed here. That completeness
-  claim is itself a `decide`-over-`(ZMod 2)[X]` enumeration (2^(d-1) monic candidates per degree)
-  which is kernel-infeasible by the same §B-irr obstruction in `Gf16Field.lean`, and is left as
-  an HONEST DOCUMENTED GAP. Until it lands, the capstone keeps carrying `[Fact (Irreducible
-  POLY_poly)]` as an explicit, satisfiable premise — never an axiom. All EIGHT excluded strata
-  (deg 1..8) are genuine, kernel-checked sub-results.
+  These per-degree lemmas alone do NOT assemble into `Irreducible POLY_poly`: the completeness
+  bridge `Monic.irreducible_iff_lt_natDegree_lt` requires `¬ q ∣ POLY_poly` for EVERY monic `q`
+  of degree `1..8`, not just the listed irreducibles. That gap is NOW CLOSED, unconditionally,
+  in `Gf16IrreducibleBridge.lean` (`POLY_poly_irreducible`): rather than enumerate over
+  `(ZMod 2)[X]` (where `decide` is dead) or match the 63 irreducibles to a completeness list,
+  the bridge tests ALL monic divisors of degree `1..8` via the computable `List Bool` mirror's
+  kernel `decide` and transports the result. So `decode ∘ encode = id` is now UNCONDITIONAL: the
+  `[Fact (Irreducible POLY_poly)]` instance is supplied by `fact_POLY_poly_irreducible`, and the
+  unconditional capstone wrapper `decode_value_at_roundtrip_gf16_unconditional` lives in the
+  bridge file. The lemmas below are kept as independent, kernel-checked CORROBORATION of the same
+  fact (all EIGHT excluded strata, deg 1..8) — genuine sub-results, now subsumed but not deleted.
 
   These lemmas are ABOUT `(ZMod 2)[X]` (abstract), NOT about the extracted `gf.*` code, so —
   exactly like `POLY_poly_no_linear_factor` and `RsRoundtrip`'s abstract Lagrange facts —

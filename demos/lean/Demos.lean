@@ -20,6 +20,8 @@ import Demos.Pqxdh.Correctness
 import Demos.Spqr.Gf
 import Demos.Spqr.Gf16Field
 import Demos.Spqr.Gf16Irreducible
+import Demos.Spqr.Gf16IrreducibleMirror
+import Demos.Spqr.Gf16IrreducibleBridge
 import Demos.Spqr.RsBridge
 import Demos.Spqr.RsRoundtrip
 import Demos.Spqr.RsInterp

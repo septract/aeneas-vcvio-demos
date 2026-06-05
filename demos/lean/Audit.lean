@@ -36,7 +36,15 @@ import Demos.Spqr.RsInterp
 import Demos.Spqr.Gf16Mul
 import Demos.Spqr.Gf16Reduce
 import Demos.Spqr.Gf16FieldAssembly
+import Demos.Spqr.Gf16ReduceTable
 import Demos.Spqr.RsCapstone
+import Demos.Spqr.Gf16FieldInstance
+import Demos.Spqr.RsFieldBridge
+import Demos.Spqr.RsEvalBridge
+import Demos.Spqr.RsDivInverse
+import Demos.Spqr.RsPrepareBridge
+import Demos.Spqr.RsCompleteBridge
+import Demos.Spqr.RsLagrangeBridge
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -394,6 +402,39 @@ import Demos.Spqr.RsCapstone
 #print axioms Spqr.Gf16FieldAssembly.gfMulV_gfAddV_distrib_right
 #print axioms Spqr.Gf16FieldAssembly.gfMulV_exists_inv
 
+-- SPQR Reed-Solomon codec — Layer B-mul, STAGE 2 CLOSED (Spqr.Gf16ReduceTable): the extracted
+-- table reduction gf.poly_reduce realizes reduction mod POLY_poly = x¹⁶+x¹²+x³+x+1, proved
+-- STRUCTURALLY (loop value specs + AdjoinRoot.mk reasoning) with NO axiom / sorry / native_decide.
+-- This DISCHARGES the hmul hypothesis and upgrades the six Gf16FieldAssembly ring laws from
+-- CONDITIONAL to UNCONDITIONAL. All headlines below mention the extracted gf.reduce_from_byte /
+-- gf.reduce_bytes / gf.poly_reduce / gf.gf_mul / gf.gf_add:
+--   reduceFromByteV_spec — VALUE SPEC of gf.reduce_from_byte: the 8-step bit-fold result satisfies
+--     mk(toPoly32 ·) = 0 (it is a POLY_poly-multiple), its high half >>16 recovers the input byte,
+--     and it is < 2^24 — a result directly about the extracted gf.reduce_from_byte;
+--   reduce_bytes_eq — VALUE SPEC of the 256-entry table gf.reduce_bytes: each entry table[k] =
+--     reduce_from_byte(k) as u16 (the upstream hax loop_invariant), proved parametrically;
+--   poly_reduce_form — closed-form VALUE SPEC of gf.poly_reduce: the two table-byte folds give
+--     ((v ^^^ table[v>>24]<<8) ^^^ table[(v1>>16)&0xFF]) as u16;
+--   stage2_proved — Spqr.Gf16Reduce.Stage2 PROVED: mk(toPoly(poly_reduceV v)) = mk(toPoly32 v),
+--     i.e. gf.poly_reduce is reduction mod POLY_poly on the bit↔coefficient embedding;
+--   hmul_proved — the multiplicative bridge phi(gfMulV a b) = phi a * phi b, UNCONDITIONAL, the
+--     residue correctness of gf.gf_mul = poly_reduce ∘ poly_mul;
+--   gfMulV_comm / _assoc / _one / _one_left / _gfAddV_distrib / _distrib_right — the extracted field
+--     multiply gf.gf_mul (value gfMulV) is now a COMMUTATIVE-RING multiply over gfAddV, UNCONDITIONALLY
+--     (the hmul premise is discharged by Stage 2 — NOT a hypothesis). NB: the FIELD inverse law
+--     (gfMulV_exists_inv) still needs Irreducible POLY_poly (B-irr, the documented WALL).
+#print axioms Spqr.Gf16ReduceTable.reduceFromByteV_spec
+#print axioms Spqr.Gf16ReduceTable.reduce_bytes_eq
+#print axioms Spqr.Gf16ReduceTable.poly_reduce_form
+#print axioms Spqr.Gf16ReduceTable.stage2_proved
+#print axioms Spqr.Gf16ReduceTable.hmul_proved
+#print axioms Spqr.Gf16ReduceTable.gfMulV_comm
+#print axioms Spqr.Gf16ReduceTable.gfMulV_assoc
+#print axioms Spqr.Gf16ReduceTable.gfMulV_one
+#print axioms Spqr.Gf16ReduceTable.gfMulV_one_left
+#print axioms Spqr.Gf16ReduceTable.gfMulV_gfAddV_distrib
+#print axioms Spqr.Gf16ReduceTable.gfMulV_gfAddV_distrib_right
+
 -- SPQR Reed-Solomon codec — Layer C (PARTIAL): value specs of the DECODER's evaluation kernel
 -- `gf.compute_at` (the `decode_value_at` re-evaluation step), extending the banked value-spec style
 -- (poly_eval_eq / mult_xdiff_trailing_eq) to the remaining decoder loops. All field-law-FREE — they
@@ -479,6 +520,195 @@ import Demos.Spqr.RsCapstone
 --     unconditional in-boundary fact this round banks.
 #print axioms Spqr.RsCapstone.decode_value_at_eq
 #print axioms Spqr.RsCapstone.decode_value_at_roundtrip
+
+-- SPQR Reed-Solomon codec — Layer B, FIELD INSTANCE (Spqr.Gf16FieldInstance): with Stage 2 closed
+-- (Gf16ReduceTable.hmul_proved), the embedding φ = mk ∘ toPoly : U16 → AdjoinRoot POLY_poly is now
+-- an UNCONDITIONAL bijective ring hom. This packages the extracted field arithmetic as the genuine
+-- GF(2¹⁶) quotient ring, the prerequisite for any Lagrange.interpolate statement over the carrier.
+--   gfRingEquiv — the bundled ring ISOMORPHISM GF16 ≃+* AdjoinRoot POLY_poly (UNCONDITIONAL): the
+--     extracted field arithmetic IS the quotient ring (ZMod 2)[X]/(POLY). (GF16 is a U16 synonym
+--     carrying the CommRing transported through the bijection φ — the NON-CIRCULAR route.)
+--   add_eq_gfAddV / mul_eq_gfMulV — the in-boundary identifications: GF16's + / * ARE the extracted
+--     gfAddV / gfMulV (the value specs of gf.gf_add / gf.gf_mul). mul_eq_gfMulV is UNCONDITIONAL
+--     because Stage 2 discharged hmul. zero_eq / one_eq — GF16's 0 / 1 are 0#u16 / 1#u16.
+--   (also def fieldOfIrreducible : Field GF16 under [Fact (Irreducible POLY_poly)] — the genuine
+--    GF(2¹⁶) field on the extracted arithmetic, conditional only on irreducibility, the WALL;
+--    fieldOfIrreducible_toCommRing records it extends the same unconditional CommRing.)
+#print axioms Spqr.Gf16FieldInstance.gfRingEquiv
+#print axioms Spqr.Gf16FieldInstance.add_eq_gfAddV
+#print axioms Spqr.Gf16FieldInstance.mul_eq_gfMulV
+#print axioms Spqr.Gf16FieldInstance.zero_eq
+#print axioms Spqr.Gf16FieldInstance.one_eq
+
+-- SPQR Reed-Solomon codec — Layer C, the BRIDGE over the GENUINE GF(2¹⁶) carrier
+-- (Spqr.RsFieldBridge): decode_value_at_roundtrip_gf16 instantiates the abstract round-trip at the
+-- REAL field F = AdjoinRoot POLY_poly with dec = φ. The prior theorem's abstract [Field F] is
+-- DISCHARGED to the genuine field (AdjoinRoot.instField under Fact (Irreducible POLY_poly)); the
+-- only carried algebraic premise is now Irreducible POLY_poly (the WALL) — hmul/the field laws are
+-- no longer assumed (Stage 2 discharged them). The interpolation-correctness bridge hbridge — now
+-- phrased over the concrete genuine ring hom φ — remains an explicit, satisfiable premise (NOT an
+-- axiom, NOT the conclusion); proving it (prepare/complete/divFold = Lagrange.interpolate, gfDivV =
+-- field inverse) is the next refinement now that the field instance exists. About gf.decode_value_at.
+#print axioms Spqr.RsFieldBridge.decode_value_at_roundtrip_gf16
+
+-- decode_value_at_roundtrip_gf16_derived — CONDITIONAL on Irreducible POLY_poly + distinct nodes
+-- (hdist) + nonzero Lagrange denominators (hdenom) + low message degree (hdeg) + the decode∘ENCODE
+-- premise (henc: ys is a codeword of f) — the formerly-assumed hbridge premise is now DISCHARGED by
+-- the proved RsLagrangeBridge.decode_value_at_eval_eq_interpolate (composition of the unconditional
+-- evaluation half with the irreducibility-conditional interpolation half). So under irreducibility +
+-- non-degeneracy, gf.decode_value_at xs ys n x, decoded through phi, recovers eval (phi x) f — the
+-- Reed-Solomon decode∘encode=id over the genuine GF(2¹⁶) field, with the interpolation-correctness
+-- bridge DERIVED rather than assumed (the only carried algebraic premise is Irreducible POLY_poly).
+-- About gf.decode_value_at.
+#print axioms Spqr.RsFieldBridge.decode_value_at_roundtrip_gf16_derived
+
+-- decode_value_at_roundtrip_gf16_of_dist — REFINEMENT: the SAME decode∘encode=id over GF(2¹⁶) but
+-- with the nonzero-Lagrange-denominator premise (hdenom) ALSO DROPPED. In the genuine GF(2¹⁶) field
+-- the Lagrange denominators are products of differences of distinct nodes, hence nonzero in the
+-- integral domain (RsLagrangeBridge.denomV_ne_zero) — so hdenom is DERIVED from hdist, not assumed.
+-- CONDITIONAL on Irreducible POLY_poly + distinct nodes (hdist) + low message degree (hdeg) + the
+-- decode∘ENCODE premise (henc) ONLY. Both the interpolation-correctness bridge and the
+-- nonzero-denominator condition are now derived; the only carried algebraic premise is irreducibility.
+-- About gf.decode_value_at.
+#print axioms Spqr.RsFieldBridge.decode_value_at_roundtrip_gf16_of_dist
+
+-- (Spqr.RsEvalBridge): the EVALUATION half of the interpolation bridge over the GENUINE GF(2¹⁶)
+-- COMMUTATIVE RING (the `GF16` instance, +/* = the extracted gfAddV/gfMulV, transported from
+-- AdjoinRoot POLY_poly through the bijection φ; UNCONDITIONAL since Stage 2 discharged hmul). These
+-- connect the decoder's re-evaluation kernel to Mathlib's Polynomial.eval, NEEDING NO field inverse
+-- and NO irreducibility — only the unconditional CommRing.
+--   compute_at_eval — UNCONDITIONAL, in-boundary: gf.compute_at coeffs len x, read into GF16, equals
+--     eval (ofU16 x) (gpoly coeffs len) — the decoder's evaluation kernel genuinely evaluates the
+--     coefficient polynomial at x over GF(2¹⁶). Assembled from the banked RsBridge.compute_at_eq
+--     (power-table + dot-product value spec), powerTable_eq_pow (the squaring recurrence builds
+--     genuine field powers x^j, by induction using only the CommRing law x^(a+b)=x^a*x^b), and
+--     dotV_eq_eval (dotV is Polynomial.eval of the coeff polynomial). About gf.compute_at.
+--   decode_value_at_eval — UNCONDITIONAL, in-boundary: gf.decode_value_at xs ys n x, read into GF16,
+--     equals eval (ofU16 x) (gpoly poly n) where poly is the value of gf.lagrange_interpolate xs ys n
+--     — the decoder reconstructs the coeff polynomial and RE-EVALUATES it at x over GF(2¹⁶). This
+--     upgrades the structural RsCapstone.decode_value_at_eq (raw dotV) to a genuine Polynomial.eval.
+--     The remaining open obligation — identifying gpoly poly n with Lagrange.interpolate of the
+--     samples (gfDivV = field inverse + basis matching) — is gated on Irreducible POLY_poly and is
+--     NOT claimed here. About gf.decode_value_at / gf.lagrange_interpolate.
+#print axioms Spqr.RsEvalBridge.compute_at_eval
+#print axioms Spqr.RsEvalBridge.decode_value_at_eval
+
+-- (Spqr.RsDivInverse): the DIVISION = FIELD-INVERSE bridge — reading the extracted Fermat-inverse
+-- ladder gf.gf_div as the genuine GF(2¹⁶) field inverse. gf.gf_div numer denom (Extracted/Gf.lean)
+-- runs 15 squaring iterations computing out = numer · denom^(2 + 4 + … + 2¹⁵) = numer · denom^(2¹⁶−2).
+--   gfDivV_eq_fermat — UNCONDITIONAL, field-law-FREE: gf.gf_div numer denom (value gfDivV) is exactly
+--     the pure squaring fold fermatFold denom numer 1 — a value spec of the extracted loop. About
+--     gf.gf_div.
+--   gf_div_eq_fermat — UNCONDITIONAL, field-law-FREE: read into the genuine GF(2¹⁶) CommRing GF16,
+--     ofU16 (gfDivV numer denom) = ofU16 numer · (ofU16 denom)^(2¹⁶−2). Pins the value of gf.gf_div
+--     over the ring WITHOUT the field inverse (only the unconditional CommRing + pow arithmetic).
+--     About gf.gf_div.
+--   gf_div_eq_inv — CONDITIONAL on Irreducible POLY_poly ALONE (strictly weaker than hmul+Irreducible
+--     since hmul is discharged): reflected through gfRingEquiv : GF16 ≃+* AdjoinRoot POLY_poly, for
+--     denom ≠ 0, the extracted gf.gf_div equals phi numer · (phi denom)⁻¹ — the genuine field inverse.
+--     |AdjoinRoot POLY_poly| = 2¹⁶ (ZMod 2-finrank = natDegree POLY_poly = 16), so denom^(2¹⁶−1) = 1
+--     (FiniteField.pow_card_sub_one_eq_one) ⇒ denom^(2¹⁶−2) = denom⁻¹. This is the field-inverse
+--     ingredient the Lagrange-basis identification needs; irreducibility is a Fact premise, never an
+--     axiom. About gf.gf_div.
+#print axioms Spqr.RsDivInverse.gfDivV_eq_fermat
+#print axioms Spqr.RsDivInverse.gf_div_eq_fermat
+#print axioms Spqr.RsDivInverse.gf_div_eq_inv
+
+-- (Spqr.RsPrepareBridge): the PREPARE = NODAL-PRODUCT bridge — the interpolation half's master
+-- numerator polynomial, over the GENUINE GF(2¹⁶) COMMUTATIVE RING (UNCONDITIONAL, no irreducibility).
+-- RsInterp.prepare_eq pinned gf.prepare xs n as the iterated window-fold prepareFoldFn (each iteration
+-- one mult_xdiff_trailing = one (X − xs[i]) multiply, leading-coefficient-first layout); this closes
+-- the polynomial-algebra reading of that fold.
+--   prepare_eq_nodal — UNCONDITIONAL, in-boundary: for n ≤ 36, gf.prepare xs n succeeds with a
+--     coefficient array p whose GF16 coefficient polynomial gpoly (p[·]) (n+1) equals the nodal product
+--     ∏_{i<n}(X − C(ofU16 xs[i])). Proved by a window-invariant induction (WinInv_init / WinInv_step /
+--     WinInv_fold): the loop's characteristic-two XOR carry c j ⊕ xs[i]·c(j+1) is exactly the
+--     coefficient identity of multiply-by-(X − xs[i])-then-divide-by-X (coeff_X_sub_C_mul with − = + in
+--     char 2) in the trailing-window layout, so after n steps the window holds ∏(X − xs[i]). Uses ONLY
+--     the unconditional CommRing on GF16 (hmul discharged by Stage 2) — NO field inverse, NO
+--     irreducibility. This nodal product is the master numerator each Lagrange basis polynomial
+--     ℓ_i = ∏_{j≠i}(X − xs[j]) divides out one factor of; banking it over the extracted gf.prepare is
+--     the foundational layer of the structural Lagrange-basis matching. About gf.prepare.
+#print axioms Spqr.RsPrepareBridge.prepare_eq_nodal
+
+-- (Spqr.RsCompleteBridge): the COMPLETE = SYNTHETIC-DIVISION bridge — the extracted gf.complete is the
+-- synthetic division of the input coefficient polynomial by (X − C xs[i]), scaled by the Lagrange weight
+-- and shifted up by one (× X), over the GENUINE GF(2¹⁶) COMMUTATIVE RING (UNCONDITIONAL, no irreducibility).
+-- RsInterp.complete_eq pinned gf.complete as the long-division sweep divFold; this closes its polynomial
+-- reading via a DivInv window-invariant induction (DivInv_init/_step/_fold: each step finalizes slot idx to
+-- the scaled tail-Horner and carries slot idx−1 to the next un-scaled tail-Horner — the synthetic-division
+-- recurrence) and the multiply-back identity (X − C p)·synQuot + C(remainder) = gpoly coeffs (n+1) (building
+-- block synDiv_mul_back, abstract, NOT a headline). All three headlines mention gf.complete:
+--   complete_eq_synDiv — UNCONDITIONAL, in-boundary: gf.complete coeffs xs ys n i succeeds with an array r
+--     whose GF16 polynomial gpoly (r[·]) (n+1) = C(remainder) + C(scale)·X·synQuot, where remainder =
+--     synTail(coeffs[·]) pix 0 (n+1) is the synthetic-division remainder, scale = ofU16(gfDivV ys[i] denomV)
+--     the Lagrange weight, and synQuot the quotient of gpoly coeffs (n+1) by (X − C pix). The general
+--     synthetic-division form of the extracted complete. NO field inverse, NO irreducibility, NO axiom.
+--   complete_eq_synDiv_root — UNCONDITIONAL, in-boundary: when pix = xs[i] is a ROOT of the input
+--     (eval (ofU16 xs[i]) (gpoly coeffs (n+1)) = 0, true for the prepare template), the remainder vanishes
+--     and gpoly (r[·]) (n+1) = C(scale)·X·synQuot — the scaled quotient gpoly coeffs (n+1)/(X − C pix).
+--   complete_prepare_eq_scaled_basis — UNCONDITIONAL, in-boundary: run on the gf.prepare template
+--     (gpoly coeffs (n+1) = ∏_{k<n}(X − xs[k]), the banked RsPrepareBridge.prepare_eq_nodal), gf.complete
+--     computes C(scale)·X·∏_{k≠i}(X − C(ofU16 xs[k])) — the scaled Lagrange basis numerator ℓ̃_i times X
+--     (the upstream "working is x·<basis poly>" offset). So gf.complete divides the master nodal product by
+--     (X − xs[i]) (removing the i-th factor) and scales by the Lagrange weight. Assembled from
+--     complete_eq_synDiv_root + synQuot_nodal_eq (the synthetic quotient of nodal is the basis numerator,
+--     by factoring out the i-th root and cancelling the monic X − C pix via mul_divByMonic_cancel_left —
+--     a building block, NOT a headline). UNCONDITIONAL over the GF16 CommRing. NB: identifying scale with
+--     the genuine Lagrange weight ys[i]·(∏(xs[i]−xs[j]))⁻¹ reads gfDivV as the field inverse (RsDivInverse.
+--     gf_div_eq_inv, CONDITIONAL on Irreducible POLY_poly, the WALL); the loop0/loop1 basis-SUM assembly
+--     into Lagrange.interpolate is the remaining piece. This banks the per-i numerator over the ring.
+#print axioms Spqr.RsCompleteBridge.complete_eq_synDiv
+#print axioms Spqr.RsCompleteBridge.complete_eq_synDiv_root
+#print axioms Spqr.RsCompleteBridge.complete_prepare_eq_scaled_basis
+
+-- (Spqr.RsLagrangeBridge): the LAGRANGE-ASSEMBLY bridge — the extracted gf.lagrange_interpolate
+-- assembles the per-i scaled basis numerators (the banked gf.complete = scale·X·ℓ̃_i) into the
+-- basis-weighted sum, and (conditional on irreducibility + distinct nodes) IS Mathlib's
+-- Lagrange.interpolate. The loop0/loop1 shift reads working[k+1], dividing out the × X offset that
+-- complete produced; the loop1 driver accumulates the per-i numerators (gfAddV = +). Two headlines,
+-- both mention gf.lagrange_interpolate (via L1 and the banked complete/prepare value specs):
+--   lagrange_interpolate_eq_basis_sum — UNCONDITIONAL, in-boundary: gf.lagrange_interpolate xs ys n
+--     succeeds with an array out whose GF16 polynomial gpoly out n = Σ_{i<n} C(scaleᵢ)·∏_{k≠i}(X − xs[k])
+--     — the Lagrange interpolant in numerator/weight form over the GENUINE GF(2¹⁶) commutative ring
+--     (hmul discharged by Stage 2). NO field inverse, NO irreducibility, NO axiom. This is the
+--     loop0/loop1 basis-SUM assembly the prior round flagged as the remaining item (1).
+--   lagrange_interpolate_eq_interpolate — CONDITIONAL on [Fact (Irreducible POLY_poly)] + distinct
+--     nodes (hdist) + nonzero Lagrange denominators (hdenom), in-boundary: gf.lagrange_interpolate xs
+--     ys n succeeds with out whose gpoly out n, MAPPED through the ring iso gfRingEquiv into the genuine
+--     field AdjoinRoot POLY_poly, equals Lagrange.interpolate (range n) (k↦phi xs[k]) (k↦phi ys[k]).
+--     Reads gfDivV as the field inverse (RsDivInverse.gf_div_eq_inv) and the denominator as the erased
+--     difference product (denomV_eq_erase_prod, char-2 XOR=− + distinct-node filter). This is the
+--     interpolation-correctness identification the full decode∘encode=id bridge (RsCapstone.hbridge)
+--     rests on; strictly WEAKER premise than the prior hmul+Irreducible pair (hmul discharged). The
+--     only carried algebraic premise is irreducibility (the WALL), carried as [Fact …], never an axiom.
+--   decode_value_at_eval_eq_interpolate — CONDITIONAL on [Fact (Irreducible POLY_poly)] + distinct
+--     nodes (hdist) + nonzero Lagrange denominators (hdenom), in-boundary: the FULL hbridge premise,
+--     DERIVED. gf.decode_value_at xs ys n x, decoded through phi, equals eval (phi x)
+--     (Lagrange.interpolate (range n) (k↦phi xs[k]) (k↦phi ys[k])). Composes the UNCONDITIONAL
+--     evaluation half (RsEvalBridge.decode_value_at_eval: decode = eval (ofU16 x) (gpoly poly n)) with
+--     the interpolation half (lagrange_interpolate_eq_interpolate: map gfRingEquiv (gpoly poly n) =
+--     Lagrange.interpolate) via the eval-commutes-with-ring-hom identity gfRingEquiv (eval r p) =
+--     eval (gfRingEquiv r) (p.map gfRingEquiv) (Polynomial.eval_map / eval₂_at_apply). This is EXACTLY
+--     the hbridge premise of RsCapstone.decode_value_at_roundtrip / RsFieldBridge.*_gf16 instantiated at
+--     F = AdjoinRoot POLY_poly, dec = phi — so hbridge is now DERIVED, no longer assumed. About
+--     gf.decode_value_at / gf.lagrange_interpolate. Only carried algebraic premise is irreducibility.
+#print axioms Spqr.RsLagrangeBridge.lagrange_interpolate_eq_basis_sum
+#print axioms Spqr.RsLagrangeBridge.lagrange_interpolate_eq_interpolate
+#print axioms Spqr.RsLagrangeBridge.decode_value_at_eval_eq_interpolate
+
+-- REFINEMENT: hdenom DERIVED from distinct nodes. denomV_ne_zero — the extracted denominator
+-- denomV xs n xs[i] 1 0 (value of gf.complete_loop0's accumulator) is NONZERO, derived from
+-- distinct nodes (hdist) in the genuine GF(2¹⁶) field: its image under the ring iso is the erased
+-- difference product ∏_{k≠i}(phi xs[i] − phi xs[k]), a product of differences of distinct field
+-- elements (phi injective), nonzero in the integral domain. CONDITIONAL on Irreducible POLY_poly +
+-- distinct nodes. The two *_of_dist headlines re-state the L2/L3 bridge with hdenom DROPPED (derived
+-- from hdist via denomV_ne_zero) — a strict reduction of the assumption surface, carrying only
+-- irreducibility + distinct nodes. About gf.complete_loop0 (denomV) / gf.lagrange_interpolate /
+-- gf.decode_value_at.
+#print axioms Spqr.RsLagrangeBridge.denomV_ne_zero
+#print axioms Spqr.RsLagrangeBridge.lagrange_interpolate_eq_interpolate_of_dist
+#print axioms Spqr.RsLagrangeBridge.decode_value_at_eval_eq_interpolate_of_dist
 
 -- SPQR typestate skeleton (the SCKA construction's transition structure): send/recv are total
 -- pure dispatches over the 11-state machine (next state + emitted payload + output-key timing),

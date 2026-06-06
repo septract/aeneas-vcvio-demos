@@ -140,6 +140,7 @@
 -/
 import VCVio.CryptoFoundations.PRF
 import VCVio.CryptoFoundations.SecExp
+import VCVio.CryptoFoundations.HardnessAssumptions.CollisionResistance
 
 open OracleComp OracleSpec
 
@@ -1926,5 +1927,94 @@ theorem cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF
     exact hbound
 
 end PerHopReduction
+
+/-! ## Sub-arc (a): the cascade-cAU floor and the honest general-`q` headline
+
+Bellare (CRYPTO 2006, *New Proofs for NMAC and HMAC*, `deps/papers/2006-043.pdf`) shows that
+iterating a compression PRF is a PRF only up to the cascade's **computational almost-universality**
+(cAU / weak collision resistance): for `q > 1` the per-hop hybrids feed extended prefixes, and the
+adjacent gap is a *collision* term, not an equality. Compression-PRF **alone** is provably
+insufficient (the length-extension attack), which is why the fixed/prefix-free length restriction
+is needed. This mirrors FCF `GNMAC_PRF.v:29`, whose final NMAC-PRF bound carries `Adv_WCR` as a
+named, undischarged floor alongside the compression-PRF term.
+
+We instantiate VCVio's existing keyed-collision game (`CollisionResistance.keyedCRAdvantage`, the
+verbatim analog of FCF `cAU.Adv_WCR`) on the cascade — no bespoke game is invented — and state the
+honest headline carrying *both* the per-hop compression-PRF term and the cAU floor explicitly. -/
+
+section CascadeCAU
+
+/-- The fixed-length cascade packaged as a VCVio `KeyedHashFamily`: key = cascade IV/key,
+domain = `List Block` (the collisions of interest are pairs of distinct length-`n` lists),
+range = `K`, `hash k bs = cascade f.eval k bs`.
+
+We register the genuine cascade hash, *not* the reject-wrapped `cascadeFixedLenPRF` evaluation,
+so the off-length `else k` branch (which returns the key) can never enter the cAU experiment and
+cannot leak the key in its real run. -/
+def cascadeKeyedHash (f : PRFScheme K Block K) :
+    CollisionResistance.KeyedHashFamily K (List Block) K where
+  keygen := f.keygen
+  hash k bs := cascade f.eval k bs
+
+@[simp] theorem cascadeKeyedHash_hash (f : PRFScheme K Block K) (k : K) (bs : List Block) :
+    (cascadeKeyedHash f).hash k bs = cascade f.eval k bs := rfl
+
+@[simp] theorem cascadeKeyedHash_keygen (f : PRFScheme K Block K) :
+    (cascadeKeyedHash f).keygen = f.keygen := rfl
+
+/-- **Cascade computational-almost-universality (cAU / weak collision resistance) advantage.**
+This is FCF `cAU.Adv_WCR` (`cAU.v:30-39`) / Bellare's cAU floor, instantiated on the cascade via
+VCVio's existing `CollisionResistance.keyedCRAdvantage`: sample the cascade key, the adversary
+outputs a pair `(bs, bs')`, and it wins iff `bs ≠ bs'` and `cascade f.eval k bs = cascade f.eval k bs'`.
+For the extracted SHA-256 cascade and bounded input length this is iterated-compression collision
+resistance — an already-assumed SPQR floor. No new game is invented; `keyedCRAdvantage` is reused. -/
+noncomputable def cascadeCAUAdvantage
+    [DecidableEq (List Block)] [DecidableEq K]
+    (f : PRFScheme K Block K)
+    (cauAdv : CollisionResistance.KeyedCRAdversary K (List Block)) : ENNReal :=
+  CollisionResistance.keyedCRAdvantage (cascadeKeyedHash f) cauAdv
+
+/-- **Honest general-`q` fixed-length cascade-PRF headline** (Bellare CRYPTO 2006, Lemma 3.1 +
+FCF `GNMAC_PRF.v:29` shape). The fixed-length cascade is a PRF assuming **BOTH**
+
+* (A) the per-hop compression-PRF bound `ε` (the `hreal`/`hideal`/`hbound` pins — still
+  *hypotheses* this cycle, **not** discharged: this is the per-hop simulation-correctness
+  obligation, exactly as in `cascadeFixedLen_prfAdvantage_le_qmul_simCorrect`), **AND**
+* (B) the cascade is cAU, carried as the explicit named floor `cAU` bounding `cascadeCAUAdvantage`.
+
+The bound is `q • ε` (the proven per-hop hybrid term, see `_le_qmul_simCorrect`, where `q` is the
+hybrid hop count) **PLUS** the explicit `cAU` floor. This is the `GNMAC_PRF.v:29` PRF-term + WCR-term
+shape.
+
+**Honesty note (read before reusing).** In *this* statement the proof closes by `0 ≤ cAU` slack:
+the cAU term is *additive* here, **not yet load-bearing**, precisely because the per-hop pins remain
+hypotheses. That is the same status as FCF `GNMAC_PRF.v:29`, which carries `Adv_WCR` as a named
+*undischarged* term. The cAU term becomes load-bearing only once sub-arc (c) discharges the per-hop
+pins *up to* the bad/collision event and sub-arc (b) bounds that event by `cascadeCAUAdvantage` —
+neither is done this cycle. Compression-PRF **alone** is provably insufficient for `q > 1`; the cAU
+floor is the term the (still-hypothetical) per-hop realizability rests on. Do **not** read this as
+"the cascade reduces to compression-PRF alone." -/
+theorem cascadeFixedLen_prfAdvantage_le_qmul_add_cAU
+    [DecidableEq Block] [DecidableEq (List Block)] [DecidableEq K] [SampleableType K]
+    (f : PRFScheme K Block K) (n : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K)
+    (q : ℕ) (H : ℕ → ProbComp Bool)
+    (hQ : H q = (cascadeFixedLenPRF f n).prfRealExp adv)
+    (h0 : H 0 = PRFScheme.prfIdealExp adv)
+    (red : ℕ → PRFScheme.PRFAdversary Block K)
+    (hreal : ∀ i ∈ Finset.range q, H (i + 1) = f.prfRealExp (red i))
+    (hideal : ∀ i ∈ Finset.range q, H i = PRFScheme.prfIdealExp (red i))
+    (ε : ℝ) (hbound : ∀ i ∈ Finset.range q, f.prfAdvantage (red i) ≤ ε)
+    (cauAdv : CollisionResistance.KeyedCRAdversary K (List Block))
+    (cAU : ℝ) (hcAU : 0 ≤ cAU)
+    (hfloor : (cascadeCAUAdvantage f cauAdv).toReal ≤ cAU) :
+    (cascadeFixedLenPRF f n).prfAdvantage adv ≤ q • ε + cAU := by
+  -- The per-hop term is the already-proven `_simCorrect` bound; the cAU floor is added on top
+  -- as a named, non-negative term (additive, not yet load-bearing — see the docstring honesty note).
+  have hhop := cascadeFixedLen_prfAdvantage_le_qmul_simCorrect
+    f n adv q H hQ h0 red hreal hideal ε hbound
+  exact le_trans hhop (le_add_of_nonneg_right hcAU)
+
+end CascadeCAU
 
 end HmacPrf

@@ -1016,4 +1016,36 @@ import Demos.Spqr.Gf16IrreducibleBridge
 -- extracted SHA-256 compression is a PRF up to 1·ε, carrying ONLY `hbound` — no `hreal`/`hideal`.
 #print axioms Sha256Wire.sha256_singleBlockCascade_prfAdvantage_le_one_smul_of_compressionPRF
 
+-- ── Sub-arc (a): the cascade-cAU floor + the HONEST general-q cascade-PRF headline ───────────────
+-- THE FLOOR STORY (read before reusing): the general-q (q>1) fixed-length cascade is a PRF assuming
+-- BOTH (A) compression is a PRF (the per-hop hreal/hideal/hbound pins — STILL HYPOTHESES here, NOT
+-- discharged this cycle) AND (B) the cascade is cAU (computational almost-universality / weak
+-- collision resistance). Compression-PRF ALONE is provably INSUFFICIENT for q>1 (the length-extension
+-- attack); the fixed/prefix-free length restriction + a cAU floor are required. This is exactly the
+-- shape of FCF GNMAC_PRF.v:29, whose final NMAC-PRF bound carries `Adv_WCR` as a named, undischarged
+-- floor ALONGSIDE the compression-PRF term (Bellare CRYPTO 2006 "New Proofs for NMAC and HMAC",
+-- deps/papers/2006-043.pdf: Lemma 3.1 = the per-block cascade-cAU step; Lemma 3.2 = Prf(cAU)=Prf).
+-- We do NOT reduce the cascade to compression-PRF alone, and we do NOT claim the per-hop pins are
+-- discharged for q>1 — they remain hypotheses, as in `cascadeFixedLen_prfAdvantage_le_qmul_simCorrect`.
+--   `cascadeKeyedHash` — the cascade packaged as VCVio's `CollisionResistance.KeyedHashFamily`
+--     (keygen = f.keygen, hash k bs = cascade f.eval k bs). The GENUINE cascade hash is registered,
+--     NOT the reject-wrapped `cascadeFixedLenPRF` eval, so the off-length `else k` branch can never
+--     enter the cAU experiment and cannot leak the key (open question Q3: neutralized).
+--   `cascadeCAUAdvantage` — cAU advantage = VCVio's EXISTING `CollisionResistance.keyedCRAdvantage`
+--     instantiated on `cascadeKeyedHash` (= FCF cAU.v:30-39 `Adv_WCR`). NO bespoke game invented:
+--     the keyed-collision game is reused verbatim from deps/VCV-io CollisionResistance.lean:106.
+--   `cascadeFixedLen_prfAdvantage_le_qmul_add_cAU` — THE HONEST HEADLINE: the fixed-length cascade
+--     PRF advantage ≤ q•ε + cAU, carrying BOTH the per-hop compression-PRF term `q•ε` (the proven
+--     `_simCorrect` bound, with hreal/hideal/hbound STILL hypotheses) AND the cAU floor `cAU`
+--     (bounding `cascadeCAUAdvantage`) EXPLICITLY — the GNMAC_PRF.v:29 PRF-term + WCR-term shape.
+--     The cAU term is ADDITIVE / not-yet-load-bearing here (the proof closes by 0 ≤ cAU slack),
+--     precisely because the per-hop pins remain hypotheses — same status as FCF's undischarged
+--     `Adv_WCR`. It becomes load-bearing only once (c) discharges the pins up to the bad event and
+--     (b) bounds that event by `cascadeCAUAdvantage` (NEITHER done this cycle).
+-- Axiom-clean ([propext, Classical.choice, Quot.sound]); the carried hypotheses are the per-hop pins
+-- + the cAU floor, exactly as Bellare/FCF assume.
+#print axioms HmacPrf.cascadeKeyedHash
+#print axioms HmacPrf.cascadeCAUAdvantage
+#print axioms HmacPrf.cascadeFixedLen_prfAdvantage_le_qmul_add_cAU
+
 #print axioms Spqr.Gf16IrreducibleBridge.adjoinRoot_pow_eq_inv_unconditional

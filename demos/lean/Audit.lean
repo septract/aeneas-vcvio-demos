@@ -27,6 +27,9 @@ import Demos.Spqr.StatesGraph
 import Demos.Crypto.Sha256
 import Demos.Crypto.Hkdf
 import Demos.Crypto.HmacPrf
+import Demos.Crypto.PrfReduction
+import Demos.Crypto.OracleHybrid
+import Demos.Crypto.Sha256Wire
 import Demos.Spqr.ChainSplit
 import Demos.Ratchet.GenericIndexed
 import Demos.Spqr.RatchetPrg
@@ -242,6 +245,68 @@ import Demos.Spqr.Gf16IrreducibleBridge
 #print axioms HmacPrf.cascadePRF_prfAdvantage_congr
 #print axioms HmacPrf.hmacSpec_eq
 #print axioms HmacPrf.hmac_pads_distinct
+
+-- HMAC-is-a-PRF, per-hop localization (the genuinely-deep middle of Bellare's cascade proof, stated
+-- exactly — over VCVio's TRUSTED randomOracle, NO new game). The depth-`i` unified switching handler
+-- on a function query is the lazy random oracle on the length-`i` prefix, its sampled chaining value
+-- post-composed with the real suffix cascade. `prefixRandomSuffixRealImpl_inr` exposes that branch
+-- definitionally (the structural unfold the per-hop reduction routes through);
+-- `prefixRandomSuffixRealImpl_inr_succ` is the SUBSTANTIVE per-hop pin — it factors the depth-`i`
+-- handler through the depth-`(i+1)` answer precomposed with EXACTLY ONE real compression call
+-- `f c (bs.get i)`, pinning precisely the compression query the reduction swaps to its challenge
+-- oracle. The remaining distributional gap (the extended-prefix lazy-RO interpolation) is the honest
+-- open obligation localized to a single query — not discharged here, but stated exactly.
+#print axioms HmacPrf.prefixRandomSuffixRealImpl_inr
+#print axioms HmacPrf.prefixRandomSuffixRealImpl_inr_succ
+
+-- Reusable PRF → random-function reduction (the FCF `PRF.v` `RndR_func`/PRF→RF analog), abstracted
+-- from the MAC-specific reduction in SufCma.lean into a primitive-agnostic module over an arbitrary
+-- `D →ₒ R` (NO new security game — reuses VCVio's TRUSTED `PRFScheme`/`prfRealQueryImpl`/
+-- `prfIdealQueryImpl`/`prfAdvantage`/`randomOracle`). `simulateQ_prfReal_fwdLog`: the real-world
+-- correspondence — running any client through the logging forward oracle then the real PRF equals
+-- running it through the keyed-function logging handler (the inductive core, generic in the client).
+-- `freshQuery_bound`: one fresh random-oracle query matches a fixed target with prob ≤ 1/|R|.
+-- `fwdLog_cache_log_inv`: the cache⊆log invariant (unlogged ⟹ uncached) the freshness gate rests on.
+-- `reduction_RF_le`: the ideal-world acceptance of the explicit reduction is ≤ 1/|R|.
+-- `prfReal_le_prfAdvantage_add_RF`: the deliverable triangle — real-world acceptance of the
+-- reduction ≤ `prfAdvantage(reduction) + 1/|R|` (the base case the cascade/MAC floors consume).
+#print axioms Demos.Crypto.PrfReduction.simulateQ_prfReal_fwdLog
+#print axioms Demos.Crypto.PrfReduction.freshQuery_bound
+#print axioms Demos.Crypto.PrfReduction.fwdLog_cache_log_inv
+#print axioms Demos.Crypto.PrfReduction.reduction_RF_le
+#print axioms Demos.Crypto.PrfReduction.prfReal_le_prfAdvantage_add_RF
+
+-- ── Generic q-query oracle hybrid (REUSABLE INFRASTRUCTURE — the missing VCVio middle) ──────────
+-- The Lean analog of FCF's `OracleHybrid.v` (Adam Petcher's Coq framework, which VCVio is modelled
+-- on), built ON TOP OF VCVio's shipped telescoping `QueryImpl.Stateful.advantage_hybrid` — NO new
+-- security notion. VCVio ships the hybrid SUM and the IND-CPA-specific endpoints, but NOT the
+-- primitive-agnostic middle: for arbitrary stateless handlers `O1 O2 : QueryImpl` and a
+-- `q`-query-bounded client, `|adv(all-O1) − adv(all-O2)| ≤ Σ_{i<q}` single-query-hop terms. Every
+-- floor discharge currently reinvents this by hand (e.g. SufCma.lean / PrfReduction.lean); this
+-- ABSTRACTS it once. The endpoints are reconstructed from a counted switching handler `Oi` (FCF's
+-- `Oi`, OracleHybrid.v:48): `run'_Oi_zero_eq_ofCounted_right` is FCF `G2_eq_Gi_0` (v:306 — `Oi 0` is
+-- the all-`O2` handler); `evalDist_run'_Oi_q_eq_ofCounted_left` is FCF `G1_eq_Gi_q` (v:230, "the most
+-- complicated part" — a `q`-bounded client never drives the counter to `q`, discharged via VCVio's
+-- relational query-bound transport). `advantage_le_sum_hybridStep` is FCF `G1_G2_close` (v:334 — the
+-- q-fold hybrid sum), feeding the two endpoints into `advantage_hybrid`; `advantage_le_nsmul_hybridStep`
+-- is FCF `distance_le_prod_f` (the `q · k` uniform-per-hop form). All axiom-clean (the per-hop term is
+-- the caller's atomic obligation, never an axiom). Written upstreamable; committed only to our tree.
+#print axioms Demos.Crypto.OracleHybrid.run'_Oi_zero_eq_ofCounted_right
+#print axioms Demos.Crypto.OracleHybrid.evalDist_run'_Oi_q_eq_ofCounted_left
+#print axioms Demos.Crypto.OracleHybrid.advantage_le_sum_hybridStep
+#print axioms Demos.Crypto.OracleHybrid.advantage_le_nsmul_hybridStep
+-- Reuse glue (round 2): the generic per-hop term IS a `ProbComp.boolDistAdvantage` of the two
+-- adjacent switching-handler runs (`hybridStep_eq_boolDistAdvantage`, by `rfl` since
+-- `Stateful.advantage` is that `boolDistAdvantage`), so `advantage_le_sum_boolDistAdvantage_hybridStep`
+-- re-states the q-fold sum with each summand in the exact `boolDistAdvantage` shape the cascade-PRF
+-- floor (`HmacPrf.boolDistAdvantage_le_sum_chain`) consumes — closing the round-1 reuse gap (the floor
+-- instantiates this rather than reconstructing the telescoping sum). `advantage_le_single_hop_of_oneQuery`
+-- is the non-vacuous end-to-end instance at q=1: the bound collapses to the lone hop, a stated theorem
+-- (not just the load-bearing `example`) witnessing the infrastructure discharges to a real conclusion.
+-- All axiom-clean (the per-hop term stays the caller's atomic obligation).
+#print axioms Demos.Crypto.OracleHybrid.hybridStep_eq_boolDistAdvantage
+#print axioms Demos.Crypto.OracleHybrid.advantage_le_sum_boolDistAdvantage_hybridStep
+#print axioms Demos.Crypto.OracleHybrid.advantage_le_single_hop_of_oneQuery
 
 -- SPQR chain-step output split (structural / value adequacy — NO security game). The extracted
 -- output-split loop carves the 64-byte HKDF block into new_next = genr8r[0..32] and out_key =
@@ -871,4 +936,33 @@ import Demos.Spqr.Gf16IrreducibleBridge
 #print axioms Spqr.Gf16IrreducibleBridge.decode_value_at_roundtrip_gf16_unconditional
 #print axioms Spqr.Gf16IrreducibleBridge.gf_div_eq_inv_unconditional
 #print axioms Spqr.Gf16IrreducibleBridge.gfMulV_exists_inv_unconditional
+
+-- ── Wire phase: HmacPrf's abstract compression `f` wired to the GENUINE EXTRACTED sha256_compress ──
+-- `compress_eq_ok`: THE TRUSTED LINK — the totalized pure `compressPure` provably equals the
+-- `Result`-monadic extracted `sha256.sha256_compress` on ALL inputs (derived from
+-- `Sha256.sha256_compress_total`, NOT a hand-rewrite of the extracted def; `compressPure` reduces by
+-- `rfl` through `sha256.sha256_compress`). `sha256_loop2_eq_cascade`: the prose "sha256 is
+-- `cascade sha256_compress H0`" is now a THEOREM — the extracted multi-block driver returns exactly
+-- `HmacPrf.cascade compressPure H0 (extractBlocks buf nblocks)` (a `Std.loop.spec_decr_nat` fold
+-- identity over the extracted offset/extract/compress steps). `cascade_sha256CompressionPRF_eval`:
+-- `compressionPRF`'s abstract `f` instantiated at the extracted `compressPure`.
+-- `sha256_cascade_prfAdvantage_le_qmul`: the SPQR-path floor headline — under the compression-PRF
+-- assumption (the named atomic floor, a HYPOTHESIS via the per-hop bound, NEVER an axiom), the
+-- fixed-length cascade of the EXTRACTED compression has advantage ≤ q·ε (wiring HmacPrf's cascade
+-- hybrid `cascadeFixedLen_prfAdvantage_le_qmul_simCorrect` at the real code). Axiom set is clean
+-- ([propext, Classical.choice, Quot.sound]); the compression-PRF assumption + the cascade hybrid's
+-- per-hop/endpoint pins + HKDF-Extract/ratchet-PRG bridges remain the honest open obligations.
+#print axioms Sha256Wire.compress_eq_ok
+#print axioms Sha256Wire.sha256_loop2_eq_cascade
+#print axioms Sha256Wire.cascade_sha256CompressionPRF_eval
+#print axioms Sha256Wire.sha256_cascade_prfAdvantage_le_qmul
+-- The fold-identity building blocks (extracted-code value lemmas feeding `sha256_loop2_eq_cascade`):
+-- `extract_block_eq_ok` projects the extracted 64-byte block-extraction to its pure `Result`-free
+-- value; `mul_offset_eq` pins the loop's `i * 64` byte offset arithmetic; `sha256_loop2_eq_cascade_suffix`
+-- is the strengthened induction hypothesis (the loop from block `i` returns the cascade over the
+-- remaining `extractBlocks` suffix). All over the EXTRACTED `sha256_compress` (via `compressPure` /
+-- `compress_eq_ok`), all axiom-clean.
+#print axioms Sha256Wire.extract_block_eq_ok
+#print axioms Sha256Wire.mul_offset_eq
+#print axioms Sha256Wire.sha256_loop2_eq_cascade_suffix
 #print axioms Spqr.Gf16IrreducibleBridge.adjoinRoot_pow_eq_inv_unconditional

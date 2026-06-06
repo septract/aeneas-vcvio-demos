@@ -51,3 +51,6 @@ import Demos.Spqr.States
 import Demos.Crypto.Sha256
 import Demos.Crypto.Hkdf
 import Demos.Crypto.HmacPrf
+import Demos.Crypto.PrfReduction
+import Demos.Crypto.OracleHybrid
+import Demos.Crypto.Sha256Wire

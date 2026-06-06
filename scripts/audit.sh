@@ -32,10 +32,13 @@ FLOOR='pqxdh\.x25519_agree|pqxdh\.mlkem_encapsulate|pqxdh\.mlkem_decapsulate|pqx
 # key-agreement correctness headlines (which take the floor properties as hypotheses on the agreed
 # legs — those hypotheses mention the opaque primitives, so the floor axioms appear transitively).
 FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total|Pqxdh\.pqxdh_keys_agree_no_opk|Pqxdh\.pqxdh_keys_agree_with_opk'
-EXPECTED=208  # number of 'depends on axioms' report lines expected (one per headline theorem)
-# NB: this counts 'depends on axioms:' lines only. `Gf16IrreducibleMirror.noSmallFactor_POLY` is the
-# kernel `decide` witness and prints 'does not depend on any axioms', so it is registered in Audit.lean
-# but does NOT add to this count (the +6 over the prior 200 are the B-irr transport headlines).
+EXPECTED=229  # number of 'depends on axioms' report lines expected (one per headline theorem)
+# NB: this counts 'depends on axioms:' lines only. TWO registered headlines print 'does not depend on
+# any axioms' (the kernel `decide` witnesses `Gf16IrreducibleMirror.noSmallFactor_POLY` and
+# `HmacPrf.hmac_pads_distinct`), so they are registered in Audit.lean but do NOT add to this count.
+# The VCVio-hybrid floor round adds the generic q-query oracle hybrid (the reusable FCF
+# `OracleHybrid.v` analog), the HMAC per-hop localization, the PRF→RF reduction, and the
+# Sha256Wire extracted-compression cascade/fold-identity headlines.
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

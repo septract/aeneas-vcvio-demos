@@ -347,4 +347,30 @@ def Sha256CompressIsPRF [DecidableEq Block] [SampleableType State]
   negligible (fun κ => ENNReal.ofReal
     ((sha256CompressionPRF (keygen κ)).prfAdvantage (advFam κ)))
 
+/-! ## The single-block cascade floor, hypothesis-free (no `simCorrect` pins)
+
+`sha256_cascade_prfAdvantage_le_qmul` carries the per-hop simulation-correctness pins
+(`hreal`/`hideal`) as hypotheses — the deep lazy-RO interpolation left open for general `q`. At the
+single-block slice (`q = 1`, `n = 1`) those pins are **genuinely discharged** in `HmacPrf.lean`
+(`cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF`: the per-hop reduction
+`singleBlockRed` is concretely built and both pins are theorems, via the `[b] ↦ b` lazy-RO
+coupling). Wiring that at the EXTRACTED `compressPure`, the single-block cascade of the extracted
+SHA-256 compression is a PRF up to `1 · ε` carrying **only** the compression-PRF advantage bound
+`hbound` — no `hreal`/`hideal`. `#print axioms` is clean.
+
+This is the cascade floor with the per-hop reduction built and proved, at the scope where the
+interpolation is exact; the general-`q` interpolation stays the named residual (an `≤`-with-
+collision-term, FCF `hF.v` `G1_G2_equiv`). The compression-PRF assumption (`ε`) remains the atomic
+floor — never proved, never an axiom — exactly as Bellare assumes. -/
+theorem sha256_singleBlockCascade_prfAdvantage_le_one_smul_of_compressionPRF
+    [DecidableEq Block] [SampleableType State] [Inhabited Block]
+    (keygen : ProbComp State)
+    (advB : PRFScheme.PRFAdversary Block State)
+    (ε : ℝ)
+    (hbound : (sha256CompressionPRF keygen).prfAdvantage advB ≤ ε) :
+    (HmacPrf.cascadeFixedLenPRF (sha256CompressionPRF keygen) 1).prfAdvantage
+        (HmacPrf.wrapSingleton advB) ≤ (1 : ℕ) • ε :=
+  HmacPrf.cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF
+    (sha256CompressionPRF keygen) advB ε hbound
+
 end Sha256Wire

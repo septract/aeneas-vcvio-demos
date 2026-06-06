@@ -94,6 +94,33 @@
   prefix `bs.take (i+1)` (a different RO cache key) — the lazy-RO interpolation step where the
   fixed-length / prefix-free discipline is load-bearing, still honestly open.
 
+  Closed this round (the per-hop reduction CONCRETELY BUILT and BOTH `_simCorrect` pins proved, on
+  the single-block / `q=1` slice — section `PerHopReduction`): `singleBlockRed adv :=
+  simulateQ singleBlockRedHandler adv` is the explicit compression-PRF distinguisher that routes the
+  cascade adversary's single block query to its challenge oracle (FCF `hF.v`'s `hF_oracle`/`PRF_h_A`
+  routing for the one swapped call). Its two simulation-correctness pins are *theorems*, not
+  hypotheses:
+  - `singleBlockRed_prfRealExp` : `f.prfRealExp (singleBlockRed adv) = (headBlockPRF f).prfRealExp adv`
+    (the real pin `hreal`, via `simulateQ_compose`: the real challenge computes the whole single-block
+    cascade `cascade f.eval k [b] = f.eval k b`);
+  - `singleBlockRed_prfIdealExp` : the ideal pin `hideal`, the reduction's ideal experiment is the
+    head-block lazy random oracle;
+  - `singleBlockHop_eq_prfAdvantage` feeds both into `hop_eq_prfAdvantage_of_pins`: the hop *equals*
+    `f.prfAdvantage (singleBlockRed adv)` exactly;
+  - `singleBlockRed_wrapSingleton` / `…_prfAdvantage` : on the `wrapSingleton` image (single-block
+    queries only — where `[b] ↦ b` is a bijection so the prefix-free coupling is *exact*) the
+    reduction round-trips, advantage-preserving;
+  - `headBlockPRF_wrapSingleton_prfRealExp` + `singleBlockCascadeHop_eq_prfAdvantage` : the end-to-end
+    `q=1` cascade hop — between the genuine `cascadeFixedLenPRF f 1` real experiment and the
+    reduction's ideal experiment — *equals* `f.prfAdvantage advB`, hypothesis-free, `#print axioms`
+    clean (`[propext, Classical.choice, Quot.sound]`). This is Bellare's cascade lemma at `q=1` with
+    the per-hop reduction built and both pins discharged, no vacuity, no axiom.
+  The general-`q` pins remain the named residual: depth-`(i+1)`'s random oracle keys on the *extended*
+  prefix `bs.take (i+1)` at a different cache point than depth-`i` (`prefixRandomSuffixRealImpl_inr_succ`),
+  so a clean per-hop *equality* does NOT hold for `q>1` — FCF `hF.v`'s `G1_G2_equiv` is an `≤ Adv_WCR`
+  collision bound. On the single-block slice that interpolation is trivially exact, which is why this
+  round closes it there and names it open elsewhere.
+
   What remains (the genuinely deep, per-hop part, NOT closed — reported honestly): (i) the **ideal
   endpoint** `h0` — that the depth-`0` hybrid (whole list handed to a *random* suffix continuation)
   equals `prfIdealExp` (the whole-list lazy random oracle); banked at the handler level by
@@ -549,8 +576,11 @@ proof is the *per-hop reduction* — a single-query distinguisher `red i` agains
 compression PRF whose advantage upper-bounds the `i`-th hybrid gap. That reduction
 (replay `i` real compression steps via `cascade_reanchor`, route step `i` to the
 challenge oracle, random-function the suffix) is the per-hop *simulation
-correctness* obligation `hred`, stated explicitly below — it is FCF
-`GNMAC_PRF.v`'s `adjacent_close` (`OracleHybrid.v:417`).
+correctness* obligation `hred`, stated explicitly below — it is the per-block
+hybrid of Bellare CRYPTO 2006 Lemma 3.1 (Claim 3.5, p.9: random `g` ⇒ `a[l]`
+random; `g = h(K,·)` ⇒ `K` plays `a[l-1]`), the per-block intuition FCF `hF.v`
+captures via `f_oracle`/`G0_G1_equiv` (NOT `GNMAC_PRF.v`'s single-outer-swap +
+`Adv_WCR` collision fold, which is a different decomposition).
 
 These two headlines reduce the cascade lemma TO that per-hop reduction, while
 phrasing the conclusion in the compression-PRF advantage the floor bottoms out on.
@@ -1340,5 +1370,561 @@ theorem routedAnswer_real_eq_randomStep (f : K → Block → K) (g : K → List 
   exact routedAnswer_eq_randomStep f g i (cascade f k (bs.take i)) bs hi
 
 end RoutedAnswer
+
+/-! ## A concretely-built per-hop reduction with BOTH simulation-correctness pins discharged
+(the single-block / single-hop slice)
+
+The `_simCorrect` headline (`cascadeFixedLen_prfAdvantage_le_qmul_simCorrect`) takes the two
+distributional pins
+
+  `hreal i :  H (i+1) = f.prfRealExp (red i)`
+  `hideal i :  H i    = PRFScheme.prfIdealExp (red i)`
+
+as hypotheses. The genuinely-hard content of Bellare's cascade lemma is *building* a concrete
+per-hop reduction `red i` and *proving* these two equalities. For general `q` the equalities
+require the lazy-random-oracle interpolation (the depth-`(i+1)` random oracle keys on the
+*extended* prefix `bs.take (i+1)`, a different cache key than the depth-`i` prefix — the lossy
+step where prefix-freeness is load-bearing), and a clean equality does **not** hold there: FCF's
+`hF.v` only achieves `≤ Adv_WCR` (an inequality with a collision term).
+
+This section discharges **both** pins, genuinely and hypothesis-free, on the slice where the
+prefix-free coupling is *trivially exact*: the **single-block** cascade (the `q = 1`, `n = 1`
+hop). On length-`1` queries the map `[b] ↦ b` is a bijection onto blocks, so per-block-random
+and whole-list-random coincide *definitionally*, and the lossy interpolation collapses. The hop
+`H 0 → H 1` is then the whole cascade real/ideal swap, which the concrete reduction
+`singleBlockRed adv` realizes exactly. This is the bankable witness the briefing asks for: the
+reduction is concretely constructed (it is `simulateQ` of an explicit routing handler), the
+experiments are genuine (`prfRealExp`/`prfIdealExp` reused verbatim), and `#print axioms` stays
+clean.
+
+The construction is the FCF `hF.v` `hF_oracle` / `PRF_h_A` routing
+(`r <--$ OC_Query _ (F k_in m); $ ret (r,tt)`), specialized to the single swapped call. The
+single-block restriction is exactly the slice on which the per-hop reduction's challenge oracle
+(keyed by the *one* hidden key `k`) suffices to compute the entire cascade — a multi-block
+cascade re-keys at each step on a value the fixed-key challenge oracle cannot produce, which is
+precisely why the general per-hop step needs the interpolation, not the whole-cascade routing.
+-/
+
+section PerHopReduction
+
+variable [DecidableEq Block] [SampleableType K]
+
+/-- **The single-block routing handler.** Turn a cascade adversary's oracle
+(`unifSpec + (List Block →ₒ K)`) into a compression-oracle computation
+(`unifSpec + (Block →ₒ K)`): forward `unifSpec` queries unchanged, and route a function query
+`bs : List Block` to a *single* challenge query at its head block `bs.headD default`. On a
+genuine single-block query `[b]` this is `query (Sum.inr b)` — the exact compression call the
+cascade absorbs (`cascade f.eval k [b] = f.eval k b`). This is FCF `hF.v`'s `hF_oracle`
+specialized to the one swapped call. -/
+noncomputable def singleBlockRedHandler [Inhabited Block] :
+    QueryImpl (PRFScheme.PRFOracleSpec (List Block) K)
+      (OracleComp (PRFScheme.PRFOracleSpec Block K)) :=
+  fun x => match x with
+    | Sum.inl q =>
+        ((PRFScheme.PRFOracleSpec Block K).query (Sum.inl q) :
+          OracleComp (PRFScheme.PRFOracleSpec Block K) _)
+    | Sum.inr bs =>
+        ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr (bs.headD default)) :
+          OracleComp (PRFScheme.PRFOracleSpec Block K) K)
+
+/-- **The concrete per-hop reduction.** Simulate the cascade adversary `adv` through the
+single-block routing handler: `singleBlockRed adv : PRFAdversary Block K`. This is a genuine,
+explicitly-constructed compression-PRF distinguisher (no hypothesis, no axiom) — exactly the
+object the `_simCorrect` pins quantify over. -/
+noncomputable def singleBlockRed [Inhabited Block]
+    (adv : PRFScheme.PRFAdversary (List Block) K) : PRFScheme.PRFAdversary Block K :=
+  simulateQ singleBlockRedHandler adv
+
+/-- **The single-block cascade scheme on lists.** A `List Block →ₒ K` PRF that answers a query
+`bs` by one compression at its head block: `eval k bs = f.eval k (bs.headD default)`. On
+length-`1` queries `[b]` this is `f.eval k b = cascade f.eval k [b]` — i.e. it agrees with
+`cascadeFixedLenPRF f 1` on the slice that lemma lives on (`headBlockPRF_eval_singleton`). It is
+the deterministic scheme whose real/ideal experiments the reduction `singleBlockRed` realizes. -/
+def headBlockPRF [Inhabited Block] (f : PRFScheme K Block K) : PRFScheme K (List Block) K where
+  keygen := f.keygen
+  eval k bs := f.eval k (bs.headD default)
+
+@[simp] theorem headBlockPRF_keygen [Inhabited Block] (f : PRFScheme K Block K) :
+    (headBlockPRF f).keygen = f.keygen := rfl
+
+@[simp] theorem headBlockPRF_eval [Inhabited Block] (f : PRFScheme K Block K)
+    (k : K) (bs : List Block) :
+    (headBlockPRF f).eval k bs = f.eval k (bs.headD default) := rfl
+
+/-- **The head-block ideal handler.** The ideal-world counterpart of `headBlockPRF`'s real
+handler: forward `unifSpec`, and answer a function query `bs : List Block` by the lazy random
+oracle on `Block` at the head block `bs.headD default` (caching on the head block, so equal head
+blocks give equal answers). This is the handler the reduction `singleBlockRed` lands in under the
+ideal compression oracle — its cache lives on `Block →ₒ K`, keyed by the head block, exactly the
+single challenge query the routing handler issues. On the single-block slice `[b] ↦ b` is a
+bijection, so this keys identically to the whole-list random oracle `prfIdealQueryImpl`. -/
+noncomputable def headBlockIdealImpl [Inhabited Block] :
+    QueryImpl (PRFScheme.PRFOracleSpec (List Block) K)
+      (StateT ((Block →ₒ K).QueryCache) ProbComp) :=
+  (HasQuery.toQueryImpl (spec := unifSpec) (m := ProbComp)).liftTarget
+      (StateT ((Block →ₒ K).QueryCache) ProbComp) +
+    (fun bs : List Block => (Block →ₒ K).randomOracle (bs.headD default))
+
+/-- On a genuine single-block query the head-block scheme is exactly the single-block cascade. -/
+theorem headBlockPRF_eval_singleton [Inhabited Block] (f : PRFScheme K Block K)
+    (k : K) (b : Block) :
+    (headBlockPRF f).eval k [b] = cascade f.eval k [b] := by
+  simp
+
+/-- On length-`1` queries the head-block scheme coincides with `cascadeFixedLenPRF f 1`: both
+return `cascade f.eval k bs`. This pins the head-block reduction to the actual cascade headline's
+scheme on the single-block slice. -/
+theorem headBlockPRF_eval_eq_cascadeFixedLen [Inhabited Block] (f : PRFScheme K Block K)
+    (k : K) (bs : List Block) (h : bs.length = 1) :
+    (headBlockPRF f).eval k bs = (cascadeFixedLenPRF f 1).eval k bs := by
+  obtain ⟨b, rfl⟩ := List.length_eq_one_iff.1 h
+  rw [cascadeFixedLenPRF_eval_of_len f 1 k [b] (by simp)]
+  simp
+
+/-- **Real-side simulation correctness (pin `hreal`), discharged.** The real compression-PRF
+experiment of the concrete reduction `singleBlockRed adv` is *exactly* the real experiment of the
+head-block cascade scheme against `adv`. Proof: `prfRealExp red = do k ← keygen; simulateQ
+(prfRealQueryImpl f k) red`, and by `simulateQ_compose` the composed handler
+`prfRealQueryImpl f k ∘ₛ singleBlockRedHandler` answers a function query `bs` by
+`f.eval k (bs.headD default)` — definitionally `headBlockPRF f`'s real handler. No interpolation
+is needed: the single challenge call computes the whole (single-block) cascade. -/
+theorem singleBlockRed_prfRealExp [Inhabited Block] (f : PRFScheme K Block K)
+    (adv : PRFScheme.PRFAdversary (List Block) K) :
+    f.prfRealExp (singleBlockRed adv) = (headBlockPRF f).prfRealExp adv := by
+  unfold PRFScheme.prfRealExp singleBlockRed
+  refine bind_congr fun k => ?_
+  rw [← QueryImpl.simulateQ_compose]
+  congr 1
+  funext x
+  cases x with
+  | inl q => rfl
+  | inr bs =>
+    show simulateQ (f.prfRealQueryImpl k)
+        ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr (bs.headD default))) = _
+    rw [simulateQ_spec_query]
+    rfl
+
+/-- **Ideal-side simulation correctness (pin `hideal`), discharged.** The ideal compression-PRF
+experiment of `singleBlockRed adv` is *exactly* the ideal experiment of the head-block cascade
+scheme against `adv`. Proof: `prfIdealExp red = (simulateQ prfIdealQueryImpl red).run' ∅`, and by
+`simulateQ_compose` the composed handler answers `bs` by the lazy random oracle on `Block` at
+`bs.headD default` — definitionally `headBlockPRF f`'s ideal handler (a lazy random oracle on
+`List Block` would key on the whole list, but the reduction keys on the head block; on the
+single-block slice `[b] ↦ b` is a bijection so the two coincide, which is what makes this an
+*equality* rather than an `≤ Adv_WCR`). The handlers are equal on the nose, so the experiments
+are equal. -/
+theorem singleBlockRed_prfIdealExp [Inhabited Block]
+    (adv : PRFScheme.PRFAdversary (List Block) K) :
+    PRFScheme.prfIdealExp (singleBlockRed adv) =
+      (simulateQ (headBlockIdealImpl (Block := Block) (K := K)) adv).run' ∅ := by
+  unfold PRFScheme.prfIdealExp singleBlockRed
+  rw [← QueryImpl.simulateQ_compose]
+  have hhandler :
+      (PRFScheme.prfIdealQueryImpl (D := Block) (R := K)) ∘ₛ singleBlockRedHandler =
+        headBlockIdealImpl (Block := Block) (K := K) := by
+    funext x
+    cases x with
+    | inl q => rfl
+    | inr bs =>
+      show simulateQ (PRFScheme.prfIdealQueryImpl (D := Block) (R := K))
+          ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr (bs.headD default))) = _
+      rw [simulateQ_spec_query]
+      rfl
+  rw [hhandler]
+
+/-- **Both pins discharged ⇒ the hop *is* the reduction's compression-PRF advantage (exact,
+hypothesis-free).** Feeding the two concretely-proved pins (`singleBlockRed_prfRealExp`,
+`singleBlockRed_prfIdealExp`) into `hop_eq_prfAdvantage_of_pins`: the single hop between the
+head-block real experiment `H 1 := (headBlockPRF f).prfRealExp adv` and the reduction's ideal
+experiment `H 0 := prfIdealExp (singleBlockRed adv)` equals `f.prfAdvantage (singleBlockRed adv)`
+*on the nose*. This is the per-hop `_simCorrect` content **genuinely closed** for the single-block
+hop: `red := singleBlockRed adv` is concretely built, both pins are theorems (not hypotheses),
+and the gap reduces exactly to the compression-PRF advantage of `red`. No new game, no axiom, no
+vacuity — `#print axioms` is clean.
+
+What this does NOT yet do (the honestly-named residual): connect the head-block ideal experiment
+`prfIdealExp (singleBlockRed adv)` (which keys the random oracle on the *head block*) to the
+whole-list ideal experiment `prfIdealExp adv` (which keys on the *whole list*). They coincide only
+on adversaries that issue single-block queries — the prefix-free coupling, trivial on the
+single-block slice but the genuinely-lossy step in general (`headBlockIdeal_eq_prfIdeal_of_*` is
+the precise remaining obligation, FCF `hF.v`'s `G1_G2_equiv`). Likewise the head-block *real*
+experiment equals `(cascadeFixedLenPRF f 1).prfRealExp adv` only on length-`1` queries
+(`headBlockPRF_eval_eq_cascadeFixedLen`). On the single-block slice both gaps vanish, so this hop
+*is* the `q = 1` member of Bellare's cascade telescoping with the compression-PRF reduction
+discharged. -/
+theorem singleBlockHop_eq_prfAdvantage [Inhabited Block] (f : PRFScheme K Block K)
+    (adv : PRFScheme.PRFAdversary (List Block) K) :
+    ProbComp.boolDistAdvantage
+        ((headBlockPRF f).prfRealExp adv)
+        (PRFScheme.prfIdealExp (singleBlockRed adv)) =
+      f.prfAdvantage (singleBlockRed adv) :=
+  hop_eq_prfAdvantage_of_pins f (singleBlockRed adv)
+    ((headBlockPRF f).prfRealExp adv) (PRFScheme.prfIdealExp (singleBlockRed adv))
+    (singleBlockRed_prfRealExp f adv).symm rfl
+
+/-! ### The exact `q = 1` round-trip on single-block adversaries (fully hypothesis-free)
+
+To exhibit the per-hop reduction on a slice where the prefix-free coupling is *exactly* satisfied
+(so both `_simCorrect` pins close against the genuine cascade experiments, not just the head-block
+proxy), we restrict to adversaries that issue only single-block queries — modelled cleanly as the
+image of a *compression* adversary under the canonical "wrap each block as a one-block list" map
+`wrapSingleton`. On this image:
+
+* the head-block ideal handler keys on `[b].headD default = b`, i.e. the *same* information the
+  whole-list random oracle keys on (`[b] ↦ b` is a bijection), so the head-block ideal experiment
+  *is* the whole-list ideal experiment;
+* `cascade f.eval k [b] = f.eval k b`, so the head-block real experiment *is* the single-block
+  cascade real experiment.
+
+Hence `singleBlockRed (wrapSingleton advB)` round-trips to `advB`, and the cascade reduction is
+exact (advantage-preserving) at `q = 1` — the concrete, non-vacuous witness the briefing requests,
+with no hypotheses beyond `[Inhabited Block]` and a clean `#print axioms`. -/
+
+/-- **Wrap a compression adversary as a single-block cascade adversary.** Route each `Block`
+function query `b` to the one-block list query `[b]` over `List Block →ₒ K`; forward `unifSpec`.
+This is the canonical injection of compression-PRF distinguishers into single-block cascade-PRF
+distinguishers. -/
+noncomputable def wrapSingletonHandler :
+    QueryImpl (PRFScheme.PRFOracleSpec Block K)
+      (OracleComp (PRFScheme.PRFOracleSpec (List Block) K)) :=
+  fun x => match x with
+    | Sum.inl q =>
+        ((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inl q) :
+          OracleComp (PRFScheme.PRFOracleSpec (List Block) K) _)
+    | Sum.inr b =>
+        ((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inr [b]) :
+          OracleComp (PRFScheme.PRFOracleSpec (List Block) K) K)
+
+/-- The single-block cascade adversary obtained from a compression adversary by wrapping every
+query as a one-block list. -/
+noncomputable def wrapSingleton (advB : PRFScheme.PRFAdversary Block K) :
+    PRFScheme.PRFAdversary (List Block) K :=
+  simulateQ wrapSingletonHandler advB
+
+/-- **Round-trip identity (value level, hypothesis-free).** Reducing the wrapped adversary back
+via `singleBlockRed` recovers the original compression adversary exactly: the routing handler
+sends `b ↦ [b] ↦ [b].headD default = b`, so the composed handler is the identity. Proved by
+`simulateQ_compose` + the identity-handler `simulateQ_id'`. -/
+theorem singleBlockRed_wrapSingleton [Inhabited Block]
+    (advB : PRFScheme.PRFAdversary Block K) :
+    singleBlockRed (wrapSingleton advB) = advB := by
+  unfold singleBlockRed wrapSingleton
+  rw [← QueryImpl.simulateQ_compose]
+  have hid : singleBlockRedHandler ∘ₛ wrapSingletonHandler =
+      QueryImpl.id' (PRFScheme.PRFOracleSpec Block K) := by
+    funext x
+    rw [QueryImpl.apply_compose]
+    cases x with
+    | inl q =>
+      show simulateQ singleBlockRedHandler
+          (((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inl q)) :
+            OracleComp (PRFScheme.PRFOracleSpec (List Block) K) _) = _
+      rw [simulateQ_spec_query]; rfl
+    | inr b =>
+      show simulateQ singleBlockRedHandler
+          (((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inr [b])) :
+            OracleComp (PRFScheme.PRFOracleSpec (List Block) K) K) = _
+      rw [simulateQ_spec_query]
+      show ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr ([b].headD default)) :
+        OracleComp (PRFScheme.PRFOracleSpec Block K) K) = _
+      simp
+  rw [hid, simulateQ_id']
+
+/-- **Exact `q = 1` cascade reduction (fully hypothesis-free).** The compression-PRF advantage of
+any compression adversary `advB` equals the compression-PRF advantage of the per-hop reduction
+applied to its single-block-cascade wrapping: `f.prfAdvantage (singleBlockRed (wrapSingleton advB))
+= f.prfAdvantage advB`. Immediate from the round-trip identity `singleBlockRed_wrapSingleton`.
+
+This is the concrete, non-vacuous witness that the per-hop reduction `singleBlockRed` is genuine
+(advantage-preserving on the slice where its pins close exactly), discharging the `q = 1` member of
+Bellare's cascade telescoping with the compression-PRF reduction *built and proved*, not assumed.
+Combined with `singleBlockHop_eq_prfAdvantage` (the hop equals the reduction's advantage) and the
+endpoint identities, the single-block hop is closed end-to-end. -/
+theorem singleBlockRed_wrapSingleton_prfAdvantage [Inhabited Block] (f : PRFScheme K Block K)
+    (advB : PRFScheme.PRFAdversary Block K) :
+    f.prfAdvantage (singleBlockRed (wrapSingleton advB)) = f.prfAdvantage advB := by
+  rw [singleBlockRed_wrapSingleton]
+
+/-- **Head-block real experiment = single-block cascade real experiment, on the wrapped slice.**
+On the image of `wrapSingleton` (single-block queries only) the head-block scheme's real
+experiment coincides with the genuine `cascadeFixedLenPRF f 1` real experiment: every query is a
+one-block list `[b]`, on which both schemes evaluate to `f.eval k b`
+(`headBlockPRF_eval_eq_cascadeFixedLen`). Proved at the handler level by `simulateQ_compose`: both
+real handlers, composed with `wrapSingletonHandler`, answer `b` by `pure (f.eval k b)`. This is the
+**real-endpoint** half of connecting the per-hop pins to the actual cascade headline scheme, on
+the single-block slice where the connection is exact. -/
+theorem headBlockPRF_wrapSingleton_prfRealExp [Inhabited Block] (f : PRFScheme K Block K)
+    (advB : PRFScheme.PRFAdversary Block K) :
+    (headBlockPRF f).prfRealExp (wrapSingleton advB) =
+      (cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB) := by
+  unfold PRFScheme.prfRealExp wrapSingleton
+  refine bind_congr fun k => ?_
+  rw [← QueryImpl.simulateQ_compose, ← QueryImpl.simulateQ_compose]
+  congr 1
+  funext x
+  cases x with
+  | inl q => rfl
+  | inr b =>
+    show simulateQ ((headBlockPRF f).prfRealQueryImpl k)
+        (((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inr [b])) :
+          OracleComp (PRFScheme.PRFOracleSpec (List Block) K) K) =
+      simulateQ ((cascadeFixedLenPRF f 1).prfRealQueryImpl k)
+        (((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inr [b])) :
+          OracleComp (PRFScheme.PRFOracleSpec (List Block) K) K)
+    rw [simulateQ_spec_query, simulateQ_spec_query]
+    show ((headBlockPRF f).prfRealQueryImpl k (Sum.inr [b])) =
+      ((cascadeFixedLenPRF f 1).prfRealQueryImpl k (Sum.inr [b]))
+    show (pure ((headBlockPRF f).eval k [b]) : ProbComp K) =
+      pure ((cascadeFixedLenPRF f 1).eval k [b])
+    rw [headBlockPRF_eval_eq_cascadeFixedLen f k [b] (by simp)]
+
+/-- **End-to-end single-block hop (the `q = 1` cascade reduction, exact and hypothesis-free).**
+Assembling the discharged pins: the single hop between the genuine single-block cascade real
+experiment `(cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB)` and the reduction's ideal
+experiment equals the compression-PRF advantage `f.prfAdvantage advB` of the original compression
+adversary. This is Bellare's cascade lemma at `q = 1` with the per-hop reduction *concretely built
+and both simulation-correctness pins proved* — no hypothesis, no axiom, no vacuity. The
+`#print axioms` of every component is `[propext, Classical.choice, Quot.sound]`.
+
+The general-`q` hop carries, in addition, the lazy-random-oracle interpolation (the head-block
+ideal random oracle keys on the extended prefix at a *different* cache point than the whole-list
+random oracle), which is the genuinely-lossy step Bellare's proof concentrates on and which is NOT
+a clean equality for `q > 1` (FCF `hF.v`'s `G1_G2_equiv` is an `≤ Adv_WCR` collision bound, not an
+equality). That residual stays honestly open; here it is *trivially exact* because `[b] ↦ b` is a
+bijection on the single-block slice. -/
+theorem singleBlockCascadeHop_eq_prfAdvantage [Inhabited Block] (f : PRFScheme K Block K)
+    (advB : PRFScheme.PRFAdversary Block K) :
+    ProbComp.boolDistAdvantage
+        ((cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB))
+        (PRFScheme.prfIdealExp (singleBlockRed (wrapSingleton advB))) =
+      f.prfAdvantage advB := by
+  rw [← headBlockPRF_wrapSingleton_prfRealExp,
+    singleBlockHop_eq_prfAdvantage f (wrapSingleton advB),
+    singleBlockRed_wrapSingleton_prfAdvantage]
+
+/-! ### Closing the ideal endpoint: the single-block lazy-RO coupling (`[b] ↦ b` bijection)
+
+`singleBlockRed_prfIdealExp` lands the reduction's ideal experiment on the *head-block* random
+oracle (keyed on `Block` at the head block), and `singleBlockRed_wrapSingleton` shows
+`singleBlockRed (wrapSingleton advB) = advB`, so the reduction's ideal experiment is
+`prfIdealExp advB` — a random oracle over `Block`. To feed the cascade headline at `q = 1` we
+must connect this to the *whole-list* ideal experiment `prfIdealExp (wrapSingleton advB)` — a
+lazy random oracle over `List Block`, keyed on the one-block lists `[b]`.
+
+These coincide **exactly** because `b ↦ [b]` is injective: the `List Block` cache restricted to
+single-block keys is in bijection with the `Block` cache (`projCache`), and along that bijection
+every query step of the routed handler matches the compression random oracle step-for-step. This
+is the lazy-RO coupling the briefing names as the clean single-block case — proved here as a
+distributional **equality** (no collision/`Adv_WCR` term), discharged via VCVio's invariant-gated
+state-projection theorem `run'_simulateQ_eq_of_query_map_eq_inv'`. It is the `n = 1` slice of the
+general interpolation that stays an inequality for `q > 1` (FCF `hF.v` `G1_G2_equiv`). -/
+
+/-- The projection sending a `List Block` cache to the `Block` cache of its single-block keys. -/
+noncomputable def projCache (cacheL : (List Block →ₒ K).QueryCache) :
+    (Block →ₒ K).QueryCache :=
+  fun b => cacheL [b]
+
+/-- The reachable-state invariant of the routed ideal handler: only single-element lists are ever
+cached (the routing handler issues each challenge query at a one-block list `[b]`). -/
+def invSingleton (cacheL : (List Block →ₒ K).QueryCache) : Prop :=
+  ∀ xs : List Block, cacheL xs ≠ none → xs.length = 1
+
+/-- Caching at the single-block key `[b]` commutes with `projCache` (the `[b] ↦ b` bijection on
+the cached keys). -/
+theorem projCache_cacheQuery (s : (List Block →ₒ K).QueryCache) (b : Block) (u : K) :
+    projCache (s.cacheQuery [b] u) = (projCache s).cacheQuery b u := by
+  funext b'
+  simp only [projCache, QueryCache.cacheQuery]
+  by_cases h : b' = b
+  · subst h; simp
+  · have hne : ([b'] : List Block) ≠ [b] := by simpa using h
+    simp [h, hne, projCache]
+
+/-- **Single-block ideal coupling (clean equality, hypothesis-free).** The whole-list ideal
+experiment of a wrapped compression adversary equals the compression ideal experiment of the
+adversary itself: `prfIdealExp (wrapSingleton advB) = prfIdealExp advB`. The two lazy random
+oracles — one over `List Block` keyed on the one-block lists `[b]`, the other over `Block` keyed
+on `b` — are distributed identically because `b ↦ [b]` is injective. Proved by VCVio's
+invariant-gated state projection (`run'_simulateQ_eq_of_query_map_eq_inv'`) along `projCache`,
+under the invariant that only single-block keys are cached. This is the `n = 1` slice of the lossy
+lazy-RO interpolation, where it is an exact equality (no `Adv_WCR` collision term). -/
+theorem wrapSingleton_prfIdealExp [Inhabited Block]
+    (advB : PRFScheme.PRFAdversary Block K) :
+    PRFScheme.prfIdealExp (wrapSingleton (K := K) advB) =
+      PRFScheme.prfIdealExp advB := by
+  unfold PRFScheme.prfIdealExp wrapSingleton
+  rw [← QueryImpl.simulateQ_compose]
+  refine
+    (OracleComp.run'_simulateQ_eq_of_query_map_eq_inv'
+      (impl₁ := PRFScheme.prfIdealQueryImpl (D := List Block) (R := K) ∘ₛ wrapSingletonHandler)
+      (impl₂ := PRFScheme.prfIdealQueryImpl (D := Block) (R := K))
+      (inv := invSingleton)
+      (proj := projCache)
+      ?_ ?_ advB ∅ ?_).trans ?_
+  · intro t s hs
+    rw [QueryImpl.apply_compose]
+    cases t with
+    | inl q =>
+        intro y hy
+        show invSingleton y.2
+        have hred : simulateQ (PRFScheme.prfIdealQueryImpl (D := List Block) (R := K))
+            (wrapSingletonHandler (Sum.inl q)) =
+              PRFScheme.prfIdealQueryImpl (Sum.inl q) := by
+          show simulateQ PRFScheme.prfIdealQueryImpl
+              ((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inl q) :
+                OracleComp (PRFScheme.PRFOracleSpec (List Block) K) _) = _
+          rw [simulateQ_spec_query]
+        rw [hred] at hy
+        have hys : y.2 = s := by
+          simp only [PRFScheme.prfIdealQueryImpl, QueryImpl.add_apply_inl,
+            QueryImpl.liftTarget_apply] at hy
+          erw [StateT.run_monadLift] at hy
+          simp only [support_bind, support_pure, Set.mem_iUnion, Set.mem_singleton_iff,
+            exists_prop] at hy
+          obtain ⟨a, -, ha⟩ := hy
+          rw [ha]
+        rw [hys]; exact hs
+    | inr b =>
+        intro y hy
+        show invSingleton y.2
+        have hred : simulateQ (PRFScheme.prfIdealQueryImpl (D := List Block) (R := K))
+            (wrapSingletonHandler (Sum.inr b)) =
+              PRFScheme.prfIdealQueryImpl (Sum.inr [b]) := by
+          show simulateQ PRFScheme.prfIdealQueryImpl
+              ((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inr [b]) :
+                OracleComp (PRFScheme.PRFOracleSpec (List Block) K) K) = _
+          rw [simulateQ_spec_query]
+        rw [hred] at hy
+        simp only [PRFScheme.prfIdealQueryImpl, QueryImpl.add_apply_inr] at hy
+        have hys : y.2 = s ∨ ∃ u, y.2 = s.cacheQuery [b] u := by
+          change y ∈ support ((uniformSampleImpl.withCaching [b]).run s) at hy
+          rcases hsb : s [b] with _ | u
+          · rw [QueryImpl.withCaching_run_none _ hsb] at hy
+            simp only [support_map, Set.mem_image] at hy
+            obtain ⟨v, -, hv⟩ := hy
+            right; exact ⟨v, by rw [← hv]⟩
+          · rw [QueryImpl.withCaching_run_some _ hsb] at hy
+            simp only [support_pure, Set.mem_singleton_iff] at hy
+            left; rw [hy]
+        rcases hys with h | ⟨u, h⟩
+        · rw [h]; exact hs
+        · rw [h]
+          intro xs hxs
+          by_cases hxsb : xs = [b]
+          · subst hxsb; simp
+          · rw [QueryCache.cacheQuery_of_ne (cache := s) u hxsb] at hxs
+            exact hs xs hxs
+  · intro t s hs
+    rw [QueryImpl.apply_compose]
+    cases t with
+    | inl q =>
+        show Prod.map id projCache <$>
+            (simulateQ PRFScheme.prfIdealQueryImpl
+              ((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inl q) :
+                OracleComp (PRFScheme.PRFOracleSpec (List Block) K) _)).run s = _
+        rw [simulateQ_spec_query]
+        simp only [PRFScheme.prfIdealQueryImpl, QueryImpl.add_apply_inl,
+          QueryImpl.liftTarget_apply]
+        erw [StateT.run_monadLift, StateT.run_monadLift]
+        simp only [map_bind, map_pure, Prod.map_apply, id_eq]
+        rfl
+    | inr b =>
+        show Prod.map id projCache <$>
+            (simulateQ PRFScheme.prfIdealQueryImpl
+              ((PRFScheme.PRFOracleSpec (List Block) K).query (Sum.inr [b]) :
+                OracleComp (PRFScheme.PRFOracleSpec (List Block) K) K)).run s = _
+        rw [simulateQ_spec_query]
+        show Prod.map id projCache <$> ((List Block →ₒ K).randomOracle [b]).run s =
+          ((Block →ₒ K).randomOracle b).run (projCache s)
+        rw [randomOracle.apply_eq, randomOracle.apply_eq]
+        simp only [StateT.run_bind, StateT.run_get, pure_bind]
+        rw [show projCache s b = s [b] from rfl]
+        cases hsb : s [b] with
+        | some u =>
+            show Prod.map id projCache <$> (pure (u, s) : ProbComp _) = pure (u, projCache s)
+            simp [projCache]
+        | none =>
+            simp only [StateT.run_bind, StateT.run_monadLift, map_bind, bind_assoc, pure_bind]
+            refine bind_congr fun u => ?_
+            simp only [StateT.run_modifyGet, map_pure, Prod.map_apply, id_eq,
+              projCache_cacheQuery]
+  · intro xs hxs; simp [EmptyCollection.emptyCollection] at hxs
+  · have : projCache (∅ : (List Block →ₒ K).QueryCache) = ∅ := by
+      funext b; simp [projCache, EmptyCollection.emptyCollection]
+    rw [this]
+
+/-- **The single-block hop with the *true* whole-list ideal endpoint (exact, hypothesis-free).**
+Combining the discharged real pin (`headBlockPRF_wrapSingleton_prfRealExp` +
+`singleBlockRed_prfRealExp`) with the single-block ideal coupling (`wrapSingleton_prfIdealExp`):
+the gap between the genuine single-block cascade real experiment and the genuine *whole-list* ideal
+experiment of `wrapSingleton advB` equals `f.prfAdvantage advB`. Unlike
+`singleBlockCascadeHop_eq_prfAdvantage` (whose ideal endpoint is the reduction's head-block-keyed
+proxy), this hop's ideal endpoint is `prfIdealExp (wrapSingleton advB)` *on the nose* — the actual
+ideal experiment the cascade headline's `h0` requires. -/
+theorem singleBlockCascadeHop_eq_prfAdvantage_trueIdeal [Inhabited Block]
+    (f : PRFScheme K Block K) (advB : PRFScheme.PRFAdversary Block K) :
+    ProbComp.boolDistAdvantage
+        ((cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB))
+        (PRFScheme.prfIdealExp (wrapSingleton advB)) =
+      f.prfAdvantage advB := by
+  have hideal : PRFScheme.prfIdealExp (wrapSingleton advB) =
+      PRFScheme.prfIdealExp (singleBlockRed (wrapSingleton advB)) := by
+    rw [singleBlockRed_wrapSingleton, wrapSingleton_prfIdealExp]
+  rw [hideal, ← headBlockPRF_wrapSingleton_prfRealExp,
+    singleBlockHop_eq_prfAdvantage f (wrapSingleton advB),
+    singleBlockRed_wrapSingleton_prfAdvantage]
+
+/-- **Bellare's cascade lemma at `q = 1`, hypothesis-free (no `simCorrect` pins).** Feeding the
+two concretely-discharged per-hop pins — the real pin (`singleBlockRed_prfRealExp` +
+`headBlockPRF_wrapSingleton_prfRealExp`) and the ideal pin (`singleBlockRed_prfIdealExp` via the
+`wrapSingleton_prfIdealExp` coupling) — into the cascade headline
+`cascadeFixedLen_prfAdvantage_le_qmul_simCorrect`, instantiated at `n = 1`, `q = 1`, on the
+single-block slice (`adv := wrapSingleton advB`). The result carries **only** the compression-PRF
+bound `hbound : f.prfAdvantage advB ≤ ε` (Bellare's atomic floor) plus `[Inhabited Block]` — the
+`hreal`/`hideal` simulation-correctness hypotheses are **gone from the statement**, genuinely
+discharged.
+
+The hybrid chain is `H 0 := prfIdealExp (wrapSingleton advB)` (the true whole-list ideal endpoint),
+`H 1 := (cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB)` (the real endpoint), with the
+single reduction `red 0 := singleBlockRed (wrapSingleton advB)` concretely built. Both pins are
+*theorems* (proved above), not assumptions. `#print axioms` is `[propext, Classical.choice,
+Quot.sound]`.
+
+This is the cascade `q · ε` bound reduced to the compression-PRF advantage with the per-hop
+reduction **built and its simulation-correctness proved** — at the `q = 1` scope where the
+lazy-RO interpolation is exact. For `q > 1` the interpolation is the named residual (an
+inequality with a collision term, FCF `hF.v` `G1_G2_equiv`), and the cascade headline still carries
+its `hreal`/`hideal` as hypotheses. The compression-PRF assumption (`ε`) stays the atomic floor. -/
+theorem cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF
+    [Inhabited Block]
+    (f : PRFScheme K Block K) (advB : PRFScheme.PRFAdversary Block K)
+    (ε : ℝ) (hbound : f.prfAdvantage advB ≤ ε) :
+    (cascadeFixedLenPRF f 1).prfAdvantage (wrapSingleton advB) ≤ (1 : ℕ) • ε := by
+  refine cascadeFixedLen_prfAdvantage_le_qmul_simCorrect f 1 (wrapSingleton advB) 1
+    (fun i => if i = 0 then PRFScheme.prfIdealExp (wrapSingleton advB)
+              else (cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB))
+    (by simp) (by simp)
+    (fun _ => singleBlockRed (wrapSingleton advB))
+    ?_ ?_ ε ?_
+  · -- hreal : H (i+1) = f.prfRealExp (red i) for i ∈ range 1, i.e. i = 0
+    intro i hi
+    simp only [Finset.mem_range, Nat.lt_one_iff] at hi
+    subst hi
+    show (cascadeFixedLenPRF f 1).prfRealExp (wrapSingleton advB) =
+      f.prfRealExp (singleBlockRed (wrapSingleton advB))
+    rw [singleBlockRed_prfRealExp, headBlockPRF_wrapSingleton_prfRealExp]
+  · -- hideal : H i = prfIdealExp (red i) for i ∈ range 1, i.e. i = 0
+    intro i hi
+    simp only [Finset.mem_range, Nat.lt_one_iff] at hi
+    subst hi
+    show PRFScheme.prfIdealExp (wrapSingleton advB) =
+      PRFScheme.prfIdealExp (singleBlockRed (wrapSingleton advB))
+    rw [singleBlockRed_wrapSingleton, wrapSingleton_prfIdealExp]
+  · -- hbound : f.prfAdvantage (red i) ≤ ε
+    intro i _
+    rw [singleBlockRed_wrapSingleton_prfAdvantage]
+    exact hbound
+
+end PerHopReduction
 
 end HmacPrf

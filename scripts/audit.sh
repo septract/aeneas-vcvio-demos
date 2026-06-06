@@ -32,13 +32,18 @@ FLOOR='pqxdh\.x25519_agree|pqxdh\.mlkem_encapsulate|pqxdh\.mlkem_decapsulate|pqx
 # key-agreement correctness headlines (which take the floor properties as hypotheses on the agreed
 # legs — those hypotheses mention the opaque primitives, so the floor axioms appear transitively).
 FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total|Pqxdh\.pqxdh_keys_agree_no_opk|Pqxdh\.pqxdh_keys_agree_with_opk'
-EXPECTED=229  # number of 'depends on axioms' report lines expected (one per headline theorem)
+EXPECTED=241  # number of 'depends on axioms' report lines expected (one per headline theorem)
 # NB: this counts 'depends on axioms:' lines only. TWO registered headlines print 'does not depend on
 # any axioms' (the kernel `decide` witnesses `Gf16IrreducibleMirror.noSmallFactor_POLY` and
 # `HmacPrf.hmac_pads_distinct`), so they are registered in Audit.lean but do NOT add to this count.
 # The VCVio-hybrid floor round adds the generic q-query oracle hybrid (the reusable FCF
 # `OracleHybrid.v` analog), the HMAC per-hop localization, the PRF→RF reduction, and the
 # Sha256Wire extracted-compression cascade/fold-identity headlines.
+# The cascade-perhop round adds 12 headlines (229→241): the per-hop reduction `singleBlockRed`
+# CONCRETELY BUILT and BOTH simulation-correctness pins (hreal/hideal) DISCHARGED at the
+# single-block (q=1) slice, culminating in `cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF`
+# (and its extracted-SHA-256 wiring `sha256_singleBlockCascade_..._of_compressionPRF`) — the q=1
+# cascade bound carrying ONLY the compression-PRF advantage `hbound`, no simCorrect hypotheses.
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

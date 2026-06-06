@@ -965,4 +965,55 @@ import Demos.Spqr.Gf16IrreducibleBridge
 #print axioms Sha256Wire.extract_block_eq_ok
 #print axioms Sha256Wire.mul_offset_eq
 #print axioms Sha256Wire.sha256_loop2_eq_cascade_suffix
+
+-- ── Per-hop reduction DISCHARGED at the single-block slice (Bellare CRYPTO 2006 cascade lemma /
+--    FCF GNMAC_PRF.v + hF.v, the per-hop swap) ─────────────────────────────────────────────────
+-- The cascade `q·ε` headline `sha256_cascade_prfAdvantage_le_qmul` / `cascadeFixedLen_..._qmul_simCorrect`
+-- carries the two per-hop simulation-correctness pins as HYPOTHESES:
+--   hreal i : H (i+1) = f.prfRealExp (red i)   (the i-th hop's real side IS the reduction's real exp)
+--   hideal i : H i    = prfIdealExp (red i)    (and its ideal side IS the reduction's ideal exp).
+-- This block DISCHARGES both pins, genuinely and hypothesis-free, at the single-block (q=1, n=1)
+-- slice — the FCF hF.v `hF_oracle`/`PRF_h_A` routing specialized to the one swapped compression
+-- call, on the slice where the lazy-RO interpolation (the lossy step, FCF hF.v `G1_G2_equiv`) is
+-- EXACT because `[b] ↦ b` is a bijection. The compression-PRF advantage (`ε`/`hbound`) stays the
+-- atomic floor — a hypothesis, never proved, never an axiom (exactly as Bellare assumes).
+--   `singleBlockRed_prfRealExp` — pin `hreal` DISCHARGED: the concretely-built reduction's real
+--     compression-PRF experiment IS the head-block cascade real experiment (simulateQ_compose; the
+--     single challenge call computes the whole single-block cascade, no interpolation).
+--   `singleBlockRed_prfIdealExp` — pin `hideal` DISCHARGED: the reduction's ideal experiment IS the
+--     head-block ideal handler (a lazy RO keyed on the head block) — an equality, not an ≤-with-WCR,
+--     because on length-1 queries head-block-keyed and whole-list-keyed random oracles coincide.
+--   `projCache_cacheQuery` — the `[b] ↦ b` cache bijection commutes with caching (the structural
+--     core making head-block-keyed = whole-list-keyed on the single-block slice).
+--   `wrapSingleton_prfIdealExp` — the TRUE-IDEAL coupling: on the single-block image the head-block
+--     ideal experiment IS the whole-list ideal experiment `prfIdealExp (wrapSingleton advB)` (the
+--     two lazy random oracles coincide along `projCache`, via the invariant-gated state projection).
+--   `singleBlockRed_wrapSingleton` — round-trip: reducing the wrapped adversary recovers it exactly.
+--   `singleBlockRed_wrapSingleton_prfAdvantage` — hence the reduction is advantage-PRESERVING (the
+--     witness that the q=1 reduction is non-vacuous, not a degenerate map).
+--   `headBlockPRF_wrapSingleton_prfRealExp` — real-endpoint: on the wrapped slice the head-block
+--     real experiment IS the genuine `cascadeFixedLenPRF f 1` real experiment.
+--   `singleBlockHop_eq_prfAdvantage` / `singleBlockCascadeHop_eq_prfAdvantage` /
+--     `..._trueIdeal` — the single hop EQUALS the reduction's compression-PRF advantage `f.prfAdvantage advB`
+--     (the `_trueIdeal` form lands its ideal endpoint on the actual whole-list `prfIdealExp` on the nose).
+--   `cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF` — THE HYPOTHESIS-FREE CASCADE BOUND:
+--     instantiates `cascadeFixedLen_prfAdvantage_le_qmul_simCorrect` at q=1 with the concretely-built
+--     `singleBlockRed (wrapSingleton advB)` and BOTH pins PROVED (not assumed) — the single-block
+--     cascade PRF advantage ≤ 1·ε carrying ONLY the compression-PRF bound `hbound`, no simCorrect hyps.
+-- All axiom-clean ([propext, Classical.choice, Quot.sound]); `hbound` is the only carried hypothesis.
+#print axioms HmacPrf.singleBlockRed_prfRealExp
+#print axioms HmacPrf.singleBlockRed_prfIdealExp
+#print axioms HmacPrf.projCache_cacheQuery
+#print axioms HmacPrf.wrapSingleton_prfIdealExp
+#print axioms HmacPrf.singleBlockRed_wrapSingleton
+#print axioms HmacPrf.singleBlockRed_wrapSingleton_prfAdvantage
+#print axioms HmacPrf.headBlockPRF_wrapSingleton_prfRealExp
+#print axioms HmacPrf.singleBlockHop_eq_prfAdvantage
+#print axioms HmacPrf.singleBlockCascadeHop_eq_prfAdvantage
+#print axioms HmacPrf.singleBlockCascadeHop_eq_prfAdvantage_trueIdeal
+#print axioms HmacPrf.cascadeFixedLen_prfAdvantage_le_one_smul_of_compressionPRF
+-- Wired at the EXTRACTED sha256_compress (via `compressPure`): the single-block cascade of the real
+-- extracted SHA-256 compression is a PRF up to 1·ε, carrying ONLY `hbound` — no `hreal`/`hideal`.
+#print axioms Sha256Wire.sha256_singleBlockCascade_prfAdvantage_le_one_smul_of_compressionPRF
+
 #print axioms Spqr.Gf16IrreducibleBridge.adjoinRoot_pow_eq_inv_unconditional

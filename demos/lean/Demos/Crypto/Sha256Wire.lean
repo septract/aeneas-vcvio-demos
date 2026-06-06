@@ -317,7 +317,7 @@ state here (that would force a `maxRecDepth` smell). The statement is fully gene
 honest scope is "the extracted compression's cascade is a PRF *given* these standard structural
 instances and the compression-PRF assumption". -/
 theorem sha256_cascade_prfAdvantage_le_qmul
-    [DecidableEq Block] [SampleableType State] [DecidableEq (List Block)]
+    [DecidableEq Block] [SampleableType State] [DecidableEq (List Block)] [Inhabited State]
     (keygen : ProbComp State) (n : ℕ)
     (adv : PRFScheme.PRFAdversary (List Block) State)
     (q : ℕ) (H : ℕ → ProbComp Bool)
@@ -363,7 +363,7 @@ interpolation is exact; the general-`q` interpolation stays the named residual (
 collision-term, FCF `hF.v` `G1_G2_equiv`). The compression-PRF assumption (`ε`) remains the atomic
 floor — never proved, never an axiom — exactly as Bellare assumes. -/
 theorem sha256_singleBlockCascade_prfAdvantage_le_one_smul_of_compressionPRF
-    [DecidableEq Block] [SampleableType State] [Inhabited Block]
+    [DecidableEq Block] [SampleableType State] [Inhabited Block] [Inhabited State]
     (keygen : ProbComp State)
     (advB : PRFScheme.PRFAdversary Block State)
     (ε : ℝ)

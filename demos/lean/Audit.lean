@@ -1048,4 +1048,52 @@ import Demos.Spqr.Gf16IrreducibleBridge
 #print axioms HmacPrf.cascadeCAUAdvantage
 #print axioms HmacPrf.cascadeFixedLen_prfAdvantage_le_qmul_add_cAU
 
+-- ── Sub-arc (c): the per-hop PRF SWAP at general depth `i`, UP TO an explicit bad-event slack ──────
+-- SCOPE (honest): this discharges the per-hop simulation-correctness pins hreal/hideal of
+-- `cascadeFixedLen_prfAdvantage_le_qmul_simCorrect` for GENERAL depth `i` over length-`n` block lists
+-- — the FCF `hF.v` `G0_G1` half (the single outer PRF swap, `G0_G1_equiv` :200, generalized per hop).
+-- It does NOT bound the bad event (sub-arc (b), the `G1_G2` collision fold) and does NOT reduce cAU to
+-- compression-PRF (sub-arc (d)). The bad event is carried as an EXPLICIT, concretely-defined ℝ term
+-- (`badSlack`), never silently dropped and never assumed 0 for n>1 (it is 0 ONLY under the
+-- endpoint-coincidence slice = the q=1 case already landed). Cite Bellare CRYPTO 2006 Lemma 3.1
+-- Claim 3.5 (deps/papers/2006-043.pdf p.9: "g = h(K,·) ⇒ K plays a[l-1]") for the per-hop swap and
+-- FCF `hF.v` G0_G1 (the structural analog).
+--   `depthIRedHandler` / `depthIRed` — the concrete depth-`i` routing handler (stateless; the single
+--     challenge KEY plays the depth-`i` chaining value, FCF `hF_oracle` per-block) and the reduction
+--     `simulateQ depthIRedHandler adv`, generalizing the landed `singleBlockRed` (`i = 0`). DEFS.
+--   `depthIRealScheme` / `depthIIdealImpl` — the real-side scheme and ideal-side handler the reduction
+--     lands in (compression at block `i`, suffix `drop (i+1)` cascaded really). DEFS.
+--   `depthIRed_prfRealExp` — pin `hreal` DISCHARGED as a CLEAN equality (no collision term): the
+--     reduction's real compression-PRF experiment IS `depthIRealScheme f i`'s real experiment
+--     (Bellare Claim 3.5 swap), via `simulateQ_compose`.
+--   `depthIRed_prfIdealExp` — pin `hideal` DISCHARGED as a CLEAN equality: the reduction's ideal
+--     experiment IS `depthIIdealImpl f i`'s experiment (block-`i`-keyed lazy random oracle).
+--   `depthIHop_eq_prfAdvantage` — the depth-`i` reduction hop = `f.prfAdvantage (depthIRed f i adv)`,
+--     HYPOTHESIS-FREE (the two pins combined; FCF `G1_1_2_close`).
+--   `badSlack` — the EXPLICIT prefix-collision residual: the two endpoint gaps between the reduction's
+--     experiments and the true depth-(i+1)/depth-i hybrids (Bellare `Collh*` / FCF `cAU.Adv_WCR`,
+--     cAU.v:30-39). A concretely-defined ℝ, carried forward UNBOUNDED (bounding ∑ badSlack is (b)).
+--   `depthIHop_le_prfAdvantage_add_badSlack` — THE (c) DELIVERABLE: per-hop pin reduced to
+--     (one compression-PRF call) + (explicit carried badSlack), for GENERAL depth `i`. Triangle
+--     inequality twice through the two reduction experiments + `depthIHop_eq_prfAdvantage`.
+--   `badSlack_eq_zero_of_endpoints` / `depthIHop_le_prfAdvantage_of_endpoints` — HONEST n=1 recovery:
+--     badSlack = 0 ONLY under endpoint-coincidence (the i=0 single-block slice), NOT assumed 0 for n>1.
+--   `cascadeFixedLen_prfAdvantage_le_sum_upToBad` — the telescoping headline:
+--     cascade advantage ≤ ∑_i (f.prfAdvantage (depthIRed f i adv) + badSlack f i adv H), every per-hop
+--     gap discharged by the CONCRETELY-BUILT reduction up to the carried badSlack. The general-q
+--     cascade is NOT closed here (badSlack unbounded); only the per-hop swap is.
+-- Axiom-clean ([propext, Classical.choice, Quot.sound]).
+#print axioms HmacPrf.depthIRedHandler
+#print axioms HmacPrf.depthIRed
+#print axioms HmacPrf.depthIRealScheme
+#print axioms HmacPrf.depthIIdealImpl
+#print axioms HmacPrf.depthIRed_prfRealExp
+#print axioms HmacPrf.depthIRed_prfIdealExp
+#print axioms HmacPrf.depthIHop_eq_prfAdvantage
+#print axioms HmacPrf.badSlack
+#print axioms HmacPrf.depthIHop_le_prfAdvantage_add_badSlack
+#print axioms HmacPrf.badSlack_eq_zero_of_endpoints
+#print axioms HmacPrf.depthIHop_le_prfAdvantage_of_endpoints
+#print axioms HmacPrf.cascadeFixedLen_prfAdvantage_le_sum_upToBad
+
 #print axioms Spqr.Gf16IrreducibleBridge.adjoinRoot_pow_eq_inv_unconditional

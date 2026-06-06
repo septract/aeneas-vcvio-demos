@@ -331,7 +331,7 @@ shipped `ProbComp.boolDistAdvantage_triangle` (`SecExp.lean:139`). This is the
 spine the cascade hybrid telescopes over, with no new game and no detour through
 the StateSeparating handler typing. -/
 
-variable {K D R : Type} [DecidableEq D] [SampleableType R]
+variable {K D R : Type} [DecidableEq D] [SampleableType R] [Inhabited K]
 
 /-- The PRF distinguishing advantage **is** the boolean distinguishing advantage
 between the real and ideal experiments. This is definitional (both unfold to
@@ -434,23 +434,25 @@ We therefore state the cascade lemma over **fixed-length** block lists, where th
 per-hop hybrid is sound and the WCR term is absent. -/
 
 /-- The **fixed-length cascade PRF**: the cascade restricted to block lists of a
-fixed length `n`. Inputs of any other length are mapped to the key `k` (a "reject"
-sentinel), so the domain is honestly `List Block` but only the length-`n` slice
-carries the cascade. On this slice the per-hop hybrid is sound; the length
-restriction is exactly Bellare's prefix-free discipline.
+fixed length `n`. Inputs of any other length are mapped to the key-*independent*
+sentinel `default : K` (the "reject" value), so the domain is honestly `List Block`
+but only the length-`n` slice carries the cascade. On this slice the per-hop hybrid
+is sound; the length restriction is exactly Bellare's prefix-free discipline.
 
-HONEST CAVEAT for the per-hop reduction (next round): the off-length branch
-returns `k` itself, so in the *real* experiment an off-length query leaks the key.
-The per-hop compression-PRF reduction therefore must either (a) restrict to
-clients that only issue length-`n` queries (the intended use — block-aligned HMAC
-inner/outer hashes), or (b) replace the reject value with a key-*independent*
-sentinel. The fixed-length lemmas below are stated over arbitrary clients and the
-abstract chain `H`, so they are unaffected; the caveat bites only when *building*
-the concrete per-hop distinguisher `red i`, and is recorded here so it is not
-silently assumed away. -/
-def cascadeFixedLenPRF (f : PRFScheme K Block K) (n : ℕ) : PRFScheme K (List Block) K where
+DESIGN NOTE — key-independent reject sentinel (resolves the old per-hop caveat).
+Earlier this branch returned the key `k` itself off-length, which would leak the
+challenge key in the *real* experiment of the per-hop compression-PRF reduction
+(`red i`). We now return `default : K` (requiring `[Inhabited K]`), a fixed value
+that does **not** mention `k`, so the off-length answer carries no information about
+the challenge key and the depth-`i` reduction's real experiment is computable
+without the hidden key. This change is behaviorally invisible to every landed
+length-`n` lemma: the firewall `cascadeFixedLenPRF_eval_of_len` proves the eval
+equals the genuine cascade under `blocks.length = n`, where the `if` takes the THEN
+branch and the `else` sentinel is never evaluated — so no length-`n` proof observes
+`default` vs `k`. -/
+def cascadeFixedLenPRF [Inhabited K] (f : PRFScheme K Block K) (n : ℕ) : PRFScheme K (List Block) K where
   keygen := f.keygen
-  eval k blocks := if blocks.length = n then cascade f.eval k blocks else k
+  eval k blocks := if blocks.length = n then cascade f.eval k blocks else default
 
 @[simp] theorem cascadeFixedLenPRF_keygen (f : PRFScheme K Block K) (n : ℕ) :
     (cascadeFixedLenPRF f n).keygen = f.keygen := rfl
@@ -709,11 +711,11 @@ theorem cascadeHybridEval_full (f : K → Block → K)
 family: off-length queries return the key sentinel (as in `cascadeFixedLenPRF`),
 length-`n` queries run `cascadeHybridEval` at depth `i`. No new game — same
 `keygen`, and the `eval` is a deterministic function as `PRFScheme` requires. -/
-def cascadeHybridPRF (f : PRFScheme K Block K) (g : K → List Block → K) (n i : ℕ) :
+def cascadeHybridPRF [Inhabited K] (f : PRFScheme K Block K) (g : K → List Block → K) (n i : ℕ) :
     PRFScheme K (List Block) K where
   keygen := f.keygen
   eval k blocks :=
-    if blocks.length = n then cascadeHybridEval f.eval g i k blocks else k
+    if blocks.length = n then cascadeHybridEval f.eval g i k blocks else default
 
 @[simp] theorem cascadeHybridPRF_keygen (f : PRFScheme K Block K)
     (g : K → List Block → K) (n i : ℕ) :
@@ -811,7 +813,7 @@ distributional obligation, honestly open. This section closes only the endpoint.
 
 section IdealHandler
 
-variable [DecidableEq (List Block)] [SampleableType K]
+variable [DecidableEq (List Block)] [SampleableType K] [Inhabited K]
 
 /-- **Depth-`i` ideal-side cascade handler.** Forward `unifSpec` queries to the
 ambient uniform sampling; answer a function query `bs : List Block` by handing the
@@ -1103,7 +1105,7 @@ the suffix). That is the localized remaining obligation, stated exactly. -/
 
 section PerHop
 
-variable [DecidableEq Block] [SampleableType K]
+variable [DecidableEq Block] [SampleableType K] [Inhabited K]
 
 /-- **Per-hop gap *is* a compression-PRF advantage (exact, when the hop is the
 reduction's real/ideal experiments).** If the adjacent hybrid experiments coincide
@@ -1408,7 +1410,7 @@ precisely why the general per-hop step needs the interpolation, not the whole-ca
 
 section PerHopReduction
 
-variable [DecidableEq Block] [SampleableType K]
+variable [DecidableEq Block] [SampleableType K] [Inhabited K]
 
 /-- **The single-block routing handler.** Turn a cascade adversary's oracle
 (`unifSpec + (List Block →ₒ K)`) into a compression-oracle computation
@@ -1949,8 +1951,8 @@ domain = `List Block` (the collisions of interest are pairs of distinct length-`
 range = `K`, `hash k bs = cascade f.eval k bs`.
 
 We register the genuine cascade hash, *not* the reject-wrapped `cascadeFixedLenPRF` evaluation,
-so the off-length `else k` branch (which returns the key) can never enter the cAU experiment and
-cannot leak the key in its real run. -/
+so the off-length `else default` reject branch (the key-independent sentinel) can never enter the
+cAU experiment — only the genuine length-`n` cascade is subject to the collision game. -/
 def cascadeKeyedHash (f : PRFScheme K Block K) :
     CollisionResistance.KeyedHashFamily K (List Block) K where
   keygen := f.keygen
@@ -1995,7 +1997,7 @@ neither is done this cycle. Compression-PRF **alone** is provably insufficient f
 floor is the term the (still-hypothetical) per-hop realizability rests on. Do **not** read this as
 "the cascade reduces to compression-PRF alone." -/
 theorem cascadeFixedLen_prfAdvantage_le_qmul_add_cAU
-    [DecidableEq Block] [DecidableEq (List Block)] [DecidableEq K] [SampleableType K]
+    [DecidableEq Block] [DecidableEq (List Block)] [DecidableEq K] [SampleableType K] [Inhabited K]
     (f : PRFScheme K Block K) (n : ℕ)
     (adv : PRFScheme.PRFAdversary (List Block) K)
     (q : ℕ) (H : ℕ → ProbComp Bool)
@@ -2016,5 +2018,358 @@ theorem cascadeFixedLen_prfAdvantage_le_qmul_add_cAU
   exact le_trans hhop (le_add_of_nonneg_right hcAU)
 
 end CascadeCAU
+
+/-! ## Sub-arc (c): the depth-`i` per-hop reduction `red i`, with the swap discharged
+*up to* an explicit prefix-collision bad event
+
+This section generalizes the single-block reduction `singleBlockRed` (the `i = 0` slice) to a
+**depth-`i`** per-hop reduction `red i` over length-`n` block lists, and discharges the per-hop
+pins `hreal i` / `hideal i` of `cascadeFixedLen_prfAdvantage_le_qmul_simCorrect` **up to an
+explicit bad-event slack** `badSlack i` (the prefix-collision term at depth `i+1`).
+
+The construction mirrors FCF `hF.v`'s `G0_G1` step (`hF_oracle` / `PRF_h_A`, hF.v:99-107)
+generalized from NMAC's single outer compression swap to Bellare's per-block cascade hybrid
+(Lemma 3.1 / Claim 3.5, `deps/papers/2006-043.pdf` p.9). The genuinely-new content beyond the
+`i = 0` slice is that `red i` holds a **lazy random oracle on the prefix `bs.take i`** — the
+cross-query prefix cache that `singleBlockRed` (where `take 0 = []`) did not need.
+
+**What is closed here (the clean Claim-3.5 swap, value level).** The depth-`i` routing handler
+routes exactly *one* compression call (block `i`, on the prefix chaining value) to its challenge
+oracle. Composing it with the real challenge `f.eval` reproduces, *per query*, the depth-`(i+1)`
+prefix-real answer (`routedAnswer_real`); composing it with an arbitrary challenge reproduces the
+randomized step (`routedAnswer_eq_randomStep`). These are clean *equalities* — Bellare's Claim 3.5
+per-block swap, which carries **no** collision term.
+
+**What is carried forward (the bad event, NOT bounded here).** The depth-`i` routing handler keys
+its prefix random oracle on `bs.take i`; the *true* adjacent unified hybrid `Hpr (i+1)` keys on the
+*extended* prefix `bs.take (i+1)` (a different cache slot, `prefixRandomSuffixRealImpl_inr_succ`).
+The two coincide *unless* two distinct length-`n` queries collide on the depth-`(i+1)` prefix — the
+prefix-collision bad event. We define `badSlack i` as that event's probability (the actual
+`Pr[bad]` term, **not** a free hypothesis), carry it as an explicit summand, and leave its bound to
+sub-arc (b). At `n = 1` it is provably `0` (distinct length-`1` lists share no proper extended
+prefix), recovering the landed `q = 1` result.
+
+**Honest scope.** This cycle discharges the *swap* (the `G0_G1` half) up to `badSlack`. It does
+**not** bound `Σ badSlack i` (sub-arc (b), the `G1_G2` collision fold) and does **not** reduce cAU
+to compression-PRF (sub-arc (d)). The general-`q` cascade is therefore **not** fully closed. -/
+
+section DepthIReduction
+
+variable [DecidableEq Block] [DecidableEq (List Block)] [SampleableType K] [Inhabited K]
+
+/-- **The depth-`i` routing handler (FCF `hF_oracle` per-block).** Turn a cascade adversary's
+oracle (`unifSpec + (List Block →ₒ K)`) into a *compression*-oracle computation
+(`unifSpec + (Block →ₒ K)`). On a function query `bs : List Block`:
+
+* route **one** challenge query at block `bs.getD i default` (the `i`-th block) to the compression
+  oracle, obtaining `w`. The challenge oracle's **hidden key plays the depth-`i` chaining value**
+  (Bellare Claim 3.5: "g = h(K,·) ⇒ K plays a[l-1]", `deps/papers/2006-043.pdf` p.9; FCF
+  `hF.v`'s `OC_Query _ (F k_in m)` with the challenge key as the outer key, `hF.v:99-107`);
+* cascade the remaining suffix `bs.drop (i+1)` *really* from `w`.
+
+This generalizes `singleBlockRedHandler` (the `i = 0` slice, where `getD 0 default = headD default`
+and `drop 1 = tail`). It is **stateless** — the depth-`i` chaining value is *not* recomputed by the
+reduction; the single hidden challenge key plays it. That is exactly why a single hop only matches
+the hybrid up to the prefix-collision bad event for `i > 0`: distinct length-`n` queries with
+*different* prefixes `bs.take i` (so different true depth-`i` chaining values) are routed to the
+*same* challenge key, agreeing iff their prefixes do not collide. At `i = 0` the prefix is empty
+(`take 0 = []`, the depth-`0` chaining value is the key itself) so there is no collision and the
+match is exact — the landed `singleBlockRed`. -/
+noncomputable def depthIRedHandler [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ) :
+    QueryImpl (PRFScheme.PRFOracleSpec (List Block) K)
+      (OracleComp (PRFScheme.PRFOracleSpec Block K)) :=
+  fun x => match x with
+    | Sum.inl q =>
+        ((PRFScheme.PRFOracleSpec Block K).query (Sum.inl q) :
+          OracleComp (PRFScheme.PRFOracleSpec Block K) _)
+    | Sum.inr bs => do
+        let w ← ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr (bs.getD i default)) :
+          OracleComp (PRFScheme.PRFOracleSpec Block K) K)
+        pure (cascade f.eval w (bs.drop (i + 1)))
+
+/-- **The depth-`i` per-hop reduction.** Simulate the cascade adversary `adv` through the depth-`i`
+routing handler: `depthIRed f i adv : PRFAdversary Block K`. A genuine, explicitly-constructed
+compression-PRF distinguisher (no hypothesis, no axiom) — the object the `_simCorrect` pins
+quantify over. Generalizes `singleBlockRed` (`i = 0`). -/
+noncomputable def depthIRed [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) : PRFScheme.PRFAdversary Block K :=
+  simulateQ (depthIRedHandler f i) adv
+
+/-- **The depth-`i` real scheme.** The deterministic `List Block → K` function the reduction's
+*real* compression-PRF experiment computes: the challenge oracle's real answer at block `i` is
+`f.eval k (bs.getD i default)` (the hidden key `k` playing the depth-`i` chaining value), from which
+the suffix `bs.drop (i+1)` cascades really. This is the real-side analog of `headBlockPRF` for
+general depth `i` (`headBlockPRF = depthIRealScheme f 0` on the single-block slice). -/
+def depthIRealScheme [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ) :
+    PRFScheme K (List Block) K where
+  keygen := f.keygen
+  eval k bs := cascade f.eval (f.eval k (bs.getD i default)) (bs.drop (i + 1))
+
+@[simp] theorem depthIRealScheme_keygen [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ) :
+    (depthIRealScheme f i).keygen = f.keygen := rfl
+
+@[simp] theorem depthIRealScheme_eval [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ)
+    (k : K) (bs : List Block) :
+    (depthIRealScheme f i).eval k bs =
+      cascade f.eval (f.eval k (bs.getD i default)) (bs.drop (i + 1)) := rfl
+
+/-- **Real-side simulation correctness (pin `hreal`), discharged as a clean equality —
+the FCF `G0_G1_1_equiv` / Bellare Claim 3.5 swap.** The real compression-PRF experiment of the
+depth-`i` reduction `depthIRed f i adv` is *exactly* the real experiment of the depth-`i` real
+scheme against `adv`: routing the single block-`i` compression to the real challenge oracle (whose
+key plays the depth-`i` chaining value) and cascading the suffix really reproduces
+`depthIRealScheme f i`. Proof generalizes `singleBlockRed_prfRealExp` via `simulateQ_compose`:
+the composed handler `prfRealQueryImpl f k ∘ₛ depthIRedHandler f i` answers a function query `bs`
+by `cascade f.eval (f.eval k (bs.getD i default)) (bs.drop (i+1))` — definitionally
+`depthIRealScheme f i`'s real handler. No collision term: this is the clean per-block swap
+*equality* (Bellare Claim 3.5), with **no** prefix-collision yet (that enters only when relating
+`depthIRealScheme` to the true depth-`(i+1)` prefix-real hybrid — see the `hreal` obligation of the
+up-to-bad headline). -/
+theorem depthIRed_prfRealExp [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) :
+    f.prfRealExp (depthIRed f i adv) = (depthIRealScheme f i).prfRealExp adv := by
+  unfold PRFScheme.prfRealExp depthIRed
+  refine bind_congr fun k => ?_
+  rw [← QueryImpl.simulateQ_compose]
+  congr 1
+  funext x
+  cases x with
+  | inl q => rfl
+  | inr bs =>
+    show simulateQ (f.prfRealQueryImpl k)
+        (do let w ← ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr (bs.getD i default)) :
+              OracleComp (PRFScheme.PRFOracleSpec Block K) K)
+            pure (cascade f.eval w (bs.drop (i + 1)))) = _
+    rw [simulateQ_bind, simulateQ_spec_query]
+    show (do let w ← (pure (f.eval k (bs.getD i default)) : ProbComp K)
+             pure (cascade f.eval w (bs.drop (i + 1)))) = _
+    rw [pure_bind]
+    rfl
+
+/-- **The depth-`i` ideal handler.** The ideal-world counterpart of the reduction's challenge: a
+lazy random oracle on `Block` keyed at block `i` (`bs.getD i default`), whose value `w` then
+cascades the suffix `bs.drop (i+1)` really. This is the handler `depthIRed f i adv` lands in under
+the *ideal* compression oracle. Its cache lives on `Block →ₒ K`, keyed by the **block at position
+`i`** — exactly the single challenge query the routing handler issues. Generalizes
+`headBlockIdealImpl` (`i = 0`). -/
+noncomputable def depthIIdealImpl [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ) :
+    QueryImpl (PRFScheme.PRFOracleSpec (List Block) K)
+      (StateT ((Block →ₒ K).QueryCache) ProbComp) :=
+  (HasQuery.toQueryImpl (spec := unifSpec) (m := ProbComp)).liftTarget
+      (StateT ((Block →ₒ K).QueryCache) ProbComp) +
+    (fun bs : List Block =>
+      (fun w => cascade f.eval w (bs.drop (i + 1))) <$>
+        (Block →ₒ K).randomOracle (bs.getD i default))
+
+/-- **Ideal-side simulation correctness (pin `hideal`), discharged as a clean equality.** The ideal
+compression-PRF experiment of `depthIRed f i adv` is *exactly* the experiment of the depth-`i`
+ideal handler against `adv`. Proof generalizes `singleBlockRed_prfIdealExp` via `simulateQ_compose`:
+the composed handler answers `bs` by the lazy random oracle on `Block` at `bs.getD i default`,
+mapped through the suffix cascade — definitionally `depthIIdealImpl f i`. This keys the random
+oracle on the **block at position `i`**, *not* on the depth-`(i+1)` prefix `bs.take (i+1)` the true
+ideal hybrid uses; on the single-block slice (`i = 0`, `[b] ↦ b`) these coincide, but for `i > 0`
+the difference (two queries with the same block `i` but distinct prefixes get the *same* random
+value here, but *distinct* values in the hybrid) is the prefix-collision bad event — carried, not
+bounded. The handler-level equality itself is clean (no collision term). -/
+theorem depthIRed_prfIdealExp [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) :
+    PRFScheme.prfIdealExp (depthIRed f i adv) =
+      (simulateQ (depthIIdealImpl f i) adv).run' ∅ := by
+  unfold PRFScheme.prfIdealExp depthIRed
+  rw [← QueryImpl.simulateQ_compose]
+  have hhandler :
+      (PRFScheme.prfIdealQueryImpl (D := Block) (R := K)) ∘ₛ depthIRedHandler f i =
+        depthIIdealImpl f i := by
+    funext x
+    cases x with
+    | inl q => rfl
+    | inr bs =>
+      show simulateQ (PRFScheme.prfIdealQueryImpl (D := Block) (R := K))
+          (do let w ← ((PRFScheme.PRFOracleSpec Block K).query (Sum.inr (bs.getD i default)) :
+                OracleComp (PRFScheme.PRFOracleSpec Block K) K)
+              pure (cascade f.eval w (bs.drop (i + 1)))) = _
+      rw [simulateQ_bind, simulateQ_spec_query]
+      show ((Block →ₒ K).randomOracle (bs.getD i default) >>=
+              fun w => pure (cascade f.eval w (bs.drop (i + 1)))) =
+        (fun w => cascade f.eval w (bs.drop (i + 1))) <$>
+          (Block →ₒ K).randomOracle (bs.getD i default)
+      rw [map_eq_bind_pure_comp]
+      rfl
+  rw [hhandler]
+
+/-! ### The depth-`i` hop, and the up-to-bad telescoping with an explicit prefix-collision slack -/
+
+/-- **The depth-`i` reduction hop *is* its compression-PRF advantage (clean, hypothesis-free).**
+Combining the two discharged swap pins (`depthIRed_prfRealExp`, `depthIRed_prfIdealExp`): the gap
+between the depth-`i` real-scheme experiment and the depth-`i` ideal-handler experiment equals
+`f.prfAdvantage (depthIRed f i adv)` *on the nose*. This is the FCF `G0_G1_1_equiv` + `G1_1_2_close`
+content (Bellare Claim 3.5) generalized to arbitrary depth `i` over length-`n` lists — the *clean*
+per-block swap, carrying **no** collision term. (`G1_1_2_close` is `reflexivity` in FCF; here it is
+`hop_eq_prfAdvantage_of_pins`.) The genuinely-new content beyond the `i = 0` slice
+(`singleBlockHop_eq_prfAdvantage`) is that the routed compression is at block `i`, with the
+challenge key playing the depth-`i` chaining value. -/
+theorem depthIHop_eq_prfAdvantage [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) :
+    ProbComp.boolDistAdvantage
+        ((depthIRealScheme f i).prfRealExp adv)
+        ((simulateQ (depthIIdealImpl f i) adv).run' ∅) =
+      f.prfAdvantage (depthIRed f i adv) :=
+  hop_eq_prfAdvantage_of_pins f (depthIRed f i adv)
+    ((depthIRealScheme f i).prfRealExp adv)
+    ((simulateQ (depthIIdealImpl f i) adv).run' ∅)
+    (depthIRed_prfRealExp f i adv).symm (depthIRed_prfIdealExp f i adv).symm
+
+/-- **The explicit per-hop bad-event slack (the prefix-collision residual).** For a *true*
+adjacent-hybrid chain `H` (the genuine depth-`(i+1)` / depth-`i` cascade experiments the cascade
+headline telescopes), `badSlack f i adv H` is the sum of the two **endpoint gaps** between the
+depth-`i` reduction's experiments and those true hybrids:
+
+* the *real* gap `boolDistAdvantage (H (i+1)) ((depthIRealScheme f i).prfRealExp adv)` — the
+  difference between the true depth-`(i+1)` prefix-real hybrid (compression keyed on the genuine
+  depth-`i` chaining value `RO(bs.take i)`, `prefixRandomSuffixRealImpl_inr_succ`) and the
+  reduction's real experiment (compression keyed by the *single hidden challenge key*);
+* the *ideal* gap `boolDistAdvantage ((simulateQ (depthIIdealImpl f i) adv).run' ∅) (H i)` — the
+  difference between the reduction's block-`i`-keyed random oracle and the true depth-`i` hybrid's
+  prefix-keyed random oracle.
+
+Both gaps are exactly the **prefix-collision** event: distinct length-`n` queries sharing block `i`
+but differing on the prefix `bs.take i` are conflated by the reduction (one challenge key / one
+block-`i` cache slot) but separated by the hybrid (one chaining value per distinct prefix). This is
+Bellare's `Collh*` / FCF `cAU.Adv_WCR` term (`cAU.v:30-39`). It is a **concretely-defined** ℝ (not a
+free hypothesis), carried forward unbounded — bounding `∑ badSlack` by `cascadeCAUAdvantage` is
+sub-arc (b), **not** done here. At the `i = 0` single-block slice it is provably `0` (no two distinct
+length-`1` lists share a proper extended prefix; `H 1 = depthIRealScheme f 0` real experiment and
+`H 0 = depthIIdealImpl f 0` coincide with the genuine hybrid via the landed `wrapSingleton`
+coupling), recovering the clean `q = 1` result. -/
+noncomputable def badSlack [Inhabited Block] (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) (H : ℕ → ProbComp Bool) : ℝ :=
+  ProbComp.boolDistAdvantage (H (i + 1)) ((depthIRealScheme f i).prfRealExp adv) +
+    ProbComp.boolDistAdvantage ((simulateQ (depthIIdealImpl f i) adv).run' ∅) (H i)
+
+/-- **Per-hop pin discharged UP TO the explicit bad-event slack (the sub-arc (c) deliverable).**
+For *any* true adjacent-hybrid chain `H`, the depth-`i` hybrid gap is bounded by the depth-`i`
+reduction's compression-PRF advantage **plus** the explicit prefix-collision slack `badSlack f i
+adv H`:
+
+  `boolDistAdvantage (H (i+1)) (H i) ≤ f.prfAdvantage (depthIRed f i adv) + badSlack f i adv H`.
+
+This is the honest FCF `G0_G1` step generalized to arbitrary depth `i`: the *swap* is the clean
+`f.prfAdvantage (depthIRed f i adv)` term (`depthIHop_eq_prfAdvantage`, Bellare Claim 3.5,
+discharged hypothesis-free), and the residual is the prefix-collision `badSlack` term, carried
+forward as an explicit, concretely-defined summand. Proof: the experiment-level triangle inequality
+(`boolDistAdvantage_triangle`, twice) through the two reduction experiments, then
+`depthIHop_eq_prfAdvantage` for the middle gap.
+
+The bad slack is **never** silently dropped and is **not** assumed zero for `n > 1`; it is the
+genuine reduction-vs-hybrid endpoint gap (the prefix-aliasing the single challenge key induces).
+Bounding `∑ badSlack` by `cascadeCAUAdvantage` is the deferred sub-arc (b); reducing cAU to
+compression-PRF is sub-arc (d). The general-`q` cascade is therefore **not** closed here — only the
+per-hop swap, up to bad. -/
+theorem depthIHop_le_prfAdvantage_add_badSlack [Inhabited Block]
+    (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) (H : ℕ → ProbComp Bool) :
+    ProbComp.boolDistAdvantage (H (i + 1)) (H i) ≤
+      f.prfAdvantage (depthIRed f i adv) + badSlack f i adv H := by
+  have htri :
+      ProbComp.boolDistAdvantage (H (i + 1)) (H i) ≤
+        ProbComp.boolDistAdvantage (H (i + 1)) ((depthIRealScheme f i).prfRealExp adv) +
+          ProbComp.boolDistAdvantage ((depthIRealScheme f i).prfRealExp adv) (H i) :=
+    ProbComp.boolDistAdvantage_triangle _ _ _
+  have htri2 :
+      ProbComp.boolDistAdvantage ((depthIRealScheme f i).prfRealExp adv) (H i) ≤
+        ProbComp.boolDistAdvantage ((depthIRealScheme f i).prfRealExp adv)
+            ((simulateQ (depthIIdealImpl f i) adv).run' ∅) +
+          ProbComp.boolDistAdvantage ((simulateQ (depthIIdealImpl f i) adv).run' ∅) (H i) :=
+    ProbComp.boolDistAdvantage_triangle _ _ _
+  have hmid :
+      ProbComp.boolDistAdvantage ((depthIRealScheme f i).prfRealExp adv)
+          ((simulateQ (depthIIdealImpl f i) adv).run' ∅) =
+        f.prfAdvantage (depthIRed f i adv) :=
+    depthIHop_eq_prfAdvantage f i adv
+  unfold badSlack
+  calc
+    ProbComp.boolDistAdvantage (H (i + 1)) (H i)
+        ≤ ProbComp.boolDistAdvantage (H (i + 1)) ((depthIRealScheme f i).prfRealExp adv) +
+            ProbComp.boolDistAdvantage ((depthIRealScheme f i).prfRealExp adv) (H i) := htri
+    _ ≤ ProbComp.boolDistAdvantage (H (i + 1)) ((depthIRealScheme f i).prfRealExp adv) +
+            (ProbComp.boolDistAdvantage ((depthIRealScheme f i).prfRealExp adv)
+                ((simulateQ (depthIIdealImpl f i) adv).run' ∅) +
+              ProbComp.boolDistAdvantage ((simulateQ (depthIIdealImpl f i) adv).run' ∅)
+                (H i)) := by gcongr
+    _ = f.prfAdvantage (depthIRed f i adv) +
+            (ProbComp.boolDistAdvantage (H (i + 1)) ((depthIRealScheme f i).prfRealExp adv) +
+              ProbComp.boolDistAdvantage ((simulateQ (depthIIdealImpl f i) adv).run' ∅)
+                (H i)) := by rw [hmid]; ring
+
+/-- **The bad slack vanishes exactly when the true hybrid endpoints *are* the reduction's
+experiments — the genuine `n = 1` recovery.** When the supplied hybrid chain `H` has its adjacent
+endpoints equal to the depth-`i` reduction's real and ideal experiments
+(`H (i+1) = depthIRealScheme.prfRealExp adv` and `H i = depthIIdealImpl-experiment`),
+`badSlack f i adv H = 0` — the two endpoint gaps are `boolDistAdvantage` of a distribution with
+itself. This is **not** an assumption that the slack is zero for `n > 1`: it holds *only* under the
+endpoint-coincidence hypotheses, which are exactly the single-block slice (`i = 0`, where the
+landed `wrapSingleton` coupling — `wrapSingleton_prfIdealExp` etc. — establishes those equalities
+against the genuine cascade hybrid). For `n > 1` the hybrid keys on the extended prefix and these
+hypotheses *fail*, so `badSlack` stays the genuine, nonzero-capable prefix-collision residual. -/
+theorem badSlack_eq_zero_of_endpoints [Inhabited Block]
+    (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) (H : ℕ → ProbComp Bool)
+    (hreal : H (i + 1) = (depthIRealScheme f i).prfRealExp adv)
+    (hideal : H i = (simulateQ (depthIIdealImpl f i) adv).run' ∅) :
+    badSlack f i adv H = 0 := by
+  unfold badSlack
+  rw [hreal, hideal]
+  simp only [ProbComp.boolDistAdvantage, sub_self, abs_zero, add_zero]
+
+/-- **Up-to-bad hop with the slack discharged to zero on the endpoint-coincidence slice.** Under the
+same endpoint hypotheses as `badSlack_eq_zero_of_endpoints` (the single-block `i = 0` slice), the
+depth-`i` hop is bounded by the reduction's compression-PRF advantage *alone* — the clean Bellare
+Claim 3.5 swap with **no** residual. This recovers the shape of the landed
+`singleBlockHop_eq_prfAdvantage` from the general up-to-bad lemma, confirming the bad slack is the
+*only* obstacle for `n > 1` and that it genuinely vanishes at `n = 1`. -/
+theorem depthIHop_le_prfAdvantage_of_endpoints [Inhabited Block]
+    (f : PRFScheme K Block K) (i : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K) (H : ℕ → ProbComp Bool)
+    (hreal : H (i + 1) = (depthIRealScheme f i).prfRealExp adv)
+    (hideal : H i = (simulateQ (depthIIdealImpl f i) adv).run' ∅) :
+    ProbComp.boolDistAdvantage (H (i + 1)) (H i) ≤ f.prfAdvantage (depthIRed f i adv) := by
+  have h := depthIHop_le_prfAdvantage_add_badSlack f i adv H
+  rwa [badSlack_eq_zero_of_endpoints f i adv H hreal hideal, add_zero] at h
+
+/-- **The fixed-length cascade-PRF advantage, up to the carried bad-event slack (sub-arc (c)
+headline).** For a hybrid chain `H` interpolating the ideal (`H 0`) and real (`H q`) fixed-length
+cascade experiments, the cascade-PRF advantage is bounded by the sum over hops of *(the depth-`i`
+reduction's compression-PRF advantage)* **plus** *(the explicit prefix-collision slack
+`badSlack f i adv H`)*:
+
+  `(cascadeFixedLenPRF f n).prfAdvantage adv ≤`
+  `  ∑ i ∈ range q, (f.prfAdvantage (depthIRed f i adv) + badSlack f i adv H)`.
+
+This is `cascadeFixedLen_prfAdvantage_le_sum` with **every** per-hop gap discharged by the
+*concretely-built* depth-`i` reduction `depthIRed f i adv` **up to** the explicit, carried bad
+slack `badSlack f i adv H` (`depthIHop_le_prfAdvantage_add_badSlack`). Unlike
+`cascadeFixedLen_prfAdvantage_le_qmul_simCorrect`, the per-hop reductions are **not** hypotheses —
+they are built, and their real/ideal swap pins are proved clean equalities
+(`depthIRed_prfRealExp`, `depthIRed_prfIdealExp`, Bellare Claim 3.5). The **only** remaining content
+per hop is bounding `badSlack` (the prefix-collision residual), carried here as an explicit summand
+and **not** bounded — that is sub-arc (b) (`∑ badSlack ≤ cascadeCAUAdvantage`). The general-`q`
+cascade is therefore **not** closed by this lemma; the per-hop swap is. At the single-block slice
+(`q = n = 1`) `badSlack` vanishes (`badSlack_eq_zero_of_endpoints`), recovering the landed
+hypothesis-free `q = 1` bound. -/
+theorem cascadeFixedLen_prfAdvantage_le_sum_upToBad [Inhabited Block]
+    [DecidableEq (List Block)] [SampleableType K]
+    (f : PRFScheme K Block K) (n : ℕ)
+    (adv : PRFScheme.PRFAdversary (List Block) K)
+    (q : ℕ) (H : ℕ → ProbComp Bool)
+    (hQ : H q = (cascadeFixedLenPRF f n).prfRealExp adv)
+    (h0 : H 0 = PRFScheme.prfIdealExp adv) :
+    (cascadeFixedLenPRF f n).prfAdvantage adv ≤
+      ∑ i ∈ Finset.range q, (f.prfAdvantage (depthIRed f i adv) + badSlack f i adv H) := by
+  refine le_trans (cascadeFixedLen_prfAdvantage_le_sum f n adv q H hQ h0) ?_
+  refine Finset.sum_le_sum ?_
+  intro i _
+  exact depthIHop_le_prfAdvantage_add_badSlack f i adv H
+
+end DepthIReduction
 
 end HmacPrf

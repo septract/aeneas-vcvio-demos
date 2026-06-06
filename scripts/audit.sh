@@ -32,7 +32,7 @@ FLOOR='pqxdh\.x25519_agree|pqxdh\.mlkem_encapsulate|pqxdh\.mlkem_decapsulate|pqx
 # key-agreement correctness headlines (which take the floor properties as hypotheses on the agreed
 # legs — those hypotheses mention the opaque primitives, so the floor axioms appear transitively).
 FLOOR_OK='Pqxdh\.pqxdh_initiate_total|Pqxdh\.pqxdh_accept_total|Pqxdh\.pqxdh_keys_agree_no_opk|Pqxdh\.pqxdh_keys_agree_with_opk'
-EXPECTED=243  # number of 'depends on axioms' report lines expected (one per headline theorem)
+EXPECTED=255  # number of 'depends on axioms' report lines expected (one per headline theorem)
 # NB: this counts 'depends on axioms:' lines only. THREE registered headlines print 'does not depend
 # on any axioms' (the kernel `decide` witnesses `Gf16IrreducibleMirror.noSmallFactor_POLY` and
 # `HmacPrf.hmac_pads_distinct`, plus the pure structure def `HmacPrf.cascadeKeyedHash`), so they are
@@ -54,6 +54,19 @@ EXPECTED=243  # number of 'depends on axioms' report lines expected (one per hea
 # (≤ q•ε + cAU, the GNMAC_PRF.v:29 PRF-term + WCR-term shape). The floor story: general-q needs
 # compression-PRF AND cascade-cAU; compression-PRF ALONE is insufficient (length-extension). The
 # per-hop pins remain HYPOTHESES (not discharged for q>1) and the cAU term is the named floor.
+# Sub-arc (c) adds 12 headlines (243→255): the per-hop PRF SWAP discharged at GENERAL depth `i` (the
+# FCF `hF.v` G0_G1 half) UP TO an explicit, carried bad-event slack. `depthIRedHandler`/`depthIRed`
+# (concrete depth-`i` reduction, the single challenge KEY plays the depth-`i` chaining value — Bellare
+# Lemma 3.1 Claim 3.5), `depthIRealScheme`/`depthIIdealImpl` (the experiments it lands in),
+# `depthIRed_prfRealExp`/`depthIRed_prfIdealExp` (pins hreal/hideal DISCHARGED as CLEAN equalities),
+# `depthIHop_eq_prfAdvantage` (hop = compression-PRF advantage, hypothesis-free),
+# `badSlack` (the EXPLICIT prefix-collision residual, a concretely-defined ℝ carried UNBOUNDED — FCF
+# cAU.v:30-39 Adv_WCR), `depthIHop_le_prfAdvantage_add_badSlack` (THE (c) DELIVERABLE: per-hop pin =
+# (compression-PRF call) + (carried badSlack), general depth), `badSlack_eq_zero_of_endpoints` /
+# `depthIHop_le_prfAdvantage_of_endpoints` (HONEST n=1 recovery — badSlack 0 ONLY under
+# endpoint-coincidence, NOT assumed 0 for n>1), `cascadeFixedLen_prfAdvantage_le_sum_upToBad`
+# (telescoping headline). The bad-event BOUND is sub-arc (b); cAU→compression-PRF is (d). NEITHER done
+# here — the general-q cascade is NOT closed by (c), only the per-hop swap is.
 
 out="$(lake env lean Audit.lean 2>&1)"; rc=$?
 echo "$out"

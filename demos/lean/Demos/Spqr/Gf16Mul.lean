@@ -16,12 +16,13 @@
       loop (XOR-accumulate `a << shift` for each set bit of `b`) matched against
       `Polynomial.coeff_mul` — no field laws, no `decide` over the value space, no axiom.
 
-    STAGE 2 (the documented gap): `poly_reduce` is reduction mod `POLY_poly` — the table-fold
-      residue-correctness. This is the deeper obligation and is NOT closed here; it is stated
-      precisely in `Gf16Field.lean`'s header.
+    STAGE 2 (CLOSED in `Gf16ReduceTable.lean`): `poly_reduce` is reduction mod `POLY_poly` — the
+      table-fold residue-correctness. This is the deeper obligation; it is proved there as
+      `Spqr.Gf16ReduceTable.stage2_proved : Stage2` (residue correctness `poly_reduce_residue`),
+      unconditionally and without `decide` over the value space, `native_decide`, or any axiom.
 
-  Composing Stage 1 with Stage 2 would give the headline `toPoly (gfMulV a b) = (toPoly a *
-  toPoly b) mod POLY_poly`. This file banks Stage 1 honestly and leaves Stage 2 documented.
+  Composing Stage 1 with Stage 2 gives the headline `toPoly (gfMulV a b) = (toPoly a *
+  toPoly b) mod POLY_poly`. This file banks Stage 1; Stage 2 is banked in `Gf16ReduceTable.lean`.
 -/
 import Demos.Spqr.Gf
 import Demos.Spqr.Gf16Field

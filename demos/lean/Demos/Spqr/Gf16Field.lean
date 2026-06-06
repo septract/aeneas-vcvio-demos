@@ -24,31 +24,31 @@
   3. **The reduction polynomial `POLY_poly : (ZMod 2)[X]`** named as `x¹⁶+x¹²+x³+x+1`
      with its cheap structural facts (`Monic`, `natDegree = 16`, `≠ 0`, `≠ 1`).
 
-  ## The DOCUMENTED GAP (the genuine wall, NOT closed — and NOT faked)
+  ## The MULTIPLICATIVE side (formerly the documented gap — now CLOSED, axiom-clean)
 
-  The multiplicative side of the field instance is NOT closed here, and is left as a
-  precise, honest obligation rather than papered over with a cheat:
+  The multiplicative side of the field instance is now closed; what was once the documented,
+  honestly-flagged obligation has since been proved (and was never papered over with a cheat):
 
-    (B-mul)  `gfMulV` is multiplication in `(ZMod 2)[X]/(POLY)`: i.e. `poly_mul` is the
-             carryless coefficient convolution and `poly_reduce` is reduction mod POLY.
-    (B-irr)  `Irreducible POLY_poly` over `ZMod 2`. `decide` is genuinely dead on
+    (B-mul)  `gfMulV` is multiplication in `(ZMod 2)[X]/(POLY)`: `poly_mul` is the carryless
+             coefficient convolution (Stage 1, `Gf16Mul.lean`) and `poly_reduce` is reduction
+             mod POLY (Stage 2). Stage 2 is CLOSED unconditionally as
+             `Spqr.Gf16ReduceTable.stage2_proved` (residue correctness, no value-space `decide`,
+             no `native_decide`, no axiom).
+    (B-irr)  `Irreducible POLY_poly` over `ZMod 2` is CLOSED unconditionally as
+             `Spqr.Gf16IrreducibleBridge.POLY_poly_irreducible` (`#print axioms` =
+             `propext, Classical.choice, Quot.sound`). `decide` is genuinely dead on
              `(ZMod 2)[X]` (a hard `Finsupp` non-reduction, verified at degree 0 — see
-             section 4), there is no `Decidable (Irreducible …)` instance, and Mathlib has
-             no Rabin-style test; the honest routes are a structural factor-exclusion
-             (≈70 monic irreducibles of degree 2..8) or a computable mirror + transport,
-             both multi-round. The degree-1 stratum IS closed here
-             (`POLY_poly_no_linear_factor`); the rest is the documented gap (section 4).
+             section 4); the closing route is a `List Bool` `F2[x]` mirror whose
+             `noSmallFactor POLY 8 = true` kernel-`decide`s in seconds, transported to
+             `(ZMod 2)[X]` and assembled via `Monic.irreducible_iff_lt_natDegree_lt`. The
+             degree-1 stratum is the `POLY_poly_no_linear_factor` corroborating piece below.
 
-  Given (B-mul) + (B-irr), `AdjoinRoot.instField` would supply `Field (AdjoinRoot POLY_poly)`,
-  and the ring-iso (additive half banked here, multiplicative half = B-mul) would transport
-  the field structure to `(U16, gfAddV, gfMulV)`. We do NOT introduce any axiom for
-  irreducibility, do NOT `decide` over the value space, and do NOT transport a field
-  through an unproven-multiplicative bijection (the circularity trap). The additive group
-  laws and the XOR↔poly-add bridge are the part that is honestly provable now.
-
-  NOTE: this file deliberately registers ONLY the additive-group / XOR-as-poly-add
-  results as Audit.lean headlines (they are about `gfAddV`, the extracted field add).
-  The multiplicative field instance stays an open, documented obligation.
+  With (B-mul) + (B-irr) both discharged, the field structure on `(U16, gfAddV, gfMulV)` no
+  longer carries `Irreducible POLY_poly` as an open `Fact` premise — it is supplied by the
+  real instance `Gf16IrreducibleBridge.fact_POLY_poly_irreducible`. We introduce NO axiom for
+  irreducibility, do NOT `decide` over the value space, and do NOT transport a field through an
+  unproven-multiplicative bijection. The additive group laws and the XOR↔poly-add bridge banked
+  in this file are the characteristic-2 additive half of that ring-iso.
 -/
 import Demos.Spqr.Gf
 import Mathlib.Algebra.Polynomial.Basic
@@ -95,7 +95,8 @@ theorem gfAddV_self (a : Std.U16) : gfAddV a a = 0#u16 := by
 `toPoly a = Σ_{i<16} a.bv[i] · X^i` over `(ZMod 2)[X]`: the polynomial whose `i`-th
 coefficient is bit `i` of `a` (as an element of `ZMod 2`). This is the additive half of
 the ring-iso `U16 ≅ (ZMod 2)[X]/(POLY)` — and we prove `gfAddV` is EXACTLY polynomial
-addition under it. The multiplicative half (`gfMulV` = `·` mod POLY) is the documented gap. -/
+addition under it. The multiplicative half (`gfMulV` = `·` mod POLY) is closed in
+`Gf16Mul.lean` / `Gf16ReduceTable.lean` (`stage2_proved`) and `Gf16IrreducibleBridge.lean`. -/
 
 /-- Bit `i` (LSB-indexed) of a `U16`, as an element of `ZMod 2` (`0` or `1`), read off
 the natural-number value (`a.val = a.bv.toNat`). -/
@@ -159,8 +160,9 @@ theorem POLY_poly_ne_one : POLY_poly ≠ 1 := by
 
 /-! ### 4. Partial factor-exclusion toward irreducibility (B-irr): no linear factor
 
-`Irreducible POLY_poly` is the multiplicative-side wall (the documented gap below). As a
-genuine, structurally-proved step toward it we bank here the *degree-1 factor exclusion*:
+`Irreducible POLY_poly` was the multiplicative-side wall — now CLOSED unconditionally in
+`Gf16IrreducibleBridge.lean` (`POLY_poly_irreducible`). As a genuine, structurally-proved
+corroborating piece of that argument we bank here the *degree-1 factor exclusion*:
 `POLY_poly` has no root over `ZMod 2`, hence no monic linear factor `X - C a`. Over a field,
 a degree-1 monic divisor is exactly `X - C a` for a root `a`, so this rules out the entire
 `Finset.Ioc 0 8`-degree-1 stratum of the `Monic.irreducible_iff_lt_natDegree_lt` criterion.
@@ -184,37 +186,32 @@ theorem POLY_poly_no_linear_factor : ∀ a : ZMod 2, ¬ (X - C a : (ZMod 2)[X]) 
   rw [Polynomial.dvd_iff_isRoot] at hdvd
   exact POLY_poly_no_root a hdvd
 
-/-! ### B-irr — the open obligation, with the precise remaining work (NOT faked)
+/-! ### B-irr — `Irreducible POLY_poly`, now CLOSED unconditionally
 
-`Irreducible (POLY_poly : (ZMod 2)[X])` is **NOT closed this round**, and is left as an HONEST
-DOCUMENTED GAP — never an axiom, `sorry`, or `native_decide`. What was established and why it
-does not yet close:
+`Irreducible (POLY_poly : (ZMod 2)[X])` is **proved**, unconditionally and axiom-clean, in
+`Gf16IrreducibleBridge.lean` (`Spqr.Gf16IrreducibleBridge.POLY_poly_irreducible`, `#print axioms`
+= `propext, Classical.choice, Quot.sound`; no `sorry`/`native_decide`/`ofReduceBool`). The route
+and the two real obstructions it had to route around are recorded for context:
 
-* **`decide` is genuinely dead on `(ZMod 2)[X]`**, verified empirically (not assumed) at the
-  cheapest possible degree: even `(POLY_poly).coeff 0 = 1` fails `decide` — its `Decidable`
-  instance unfolds through `Classical.propDecidable`/`ZMod.decidableEq` and reduction gets
-  STUCK on the `Finsupp`/`AddMonoidAlgebra` representation of `Polynomial`, which the kernel
-  cannot reduce. So NO fact about any `(ZMod 2)[X]` polynomial is `decide`-able in Mathlib's
-  representation; this is a hard non-reduction, not a degree-16 timeout. (`simp` closes
-  `coeff 0 = 1` fine — but `simp` is not a decision procedure for irreducibility.)
-* **There is no `Decidable (Irreducible p)` instance** for `p : (ZMod 2)[X]` to hand to `decide`,
-  and `Monic.irreducible_iff_lt_natDegree_lt` reduces it to `∀ q, q.Monic → q.natDegree ∈
-  Finset.Ioc 0 8 → ¬ q ∣ p` — a quantifier over the INFINITE type `(ZMod 2)[X]`, still not
-  Decidable, and each `¬ q ∣ p` is `p %ₘ q ≠ 0`, again over the non-reducing representation.
-* **No Rabin-style irreducibility test exists in Mathlib** for this case (search found only
-  Kummer-type `X_pow_sub_C_irreducible_iff…`, not applicable to `x¹⁶+x¹²+x³+x+1`).
+* **`decide` is genuinely dead on `(ZMod 2)[X]`**, verified empirically at the cheapest possible
+  degree: even `(POLY_poly).coeff 0 = 1` fails `decide` — its `Decidable` instance unfolds through
+  `Classical.propDecidable`/`ZMod.decidableEq` and reduction gets STUCK on the
+  `Finsupp`/`AddMonoidAlgebra` representation of `Polynomial`, which the kernel cannot reduce. So
+  no fact about any `(ZMod 2)[X]` polynomial is `decide`-able in Mathlib's representation; this is a
+  hard non-reduction, not a degree-16 timeout.
+* **There is no `Decidable (Irreducible p)` instance** for `p : (ZMod 2)[X]`, and
+  `Monic.irreducible_iff_lt_natDegree_lt` reduces irreducibility to "no monic factor of degree
+  `1..8` divides `p`" — a quantifier over the INFINITE type `(ZMod 2)[X]`.
 
-**What remains** is therefore one of: (a) a full structural factor-exclusion — ruling out every
-monic irreducible factor of degree 2..8 (≈70 irreducibles, each `¬ q ∣ POLY_poly` a hand
-`%ₘ` computation over the non-reducing representation, no automation) — multi-round; or (b) a
-SEPARATE computable mirror of `(ZMod 2)[X]` up to degree 16 (as `BitVec`/`Nat`/`List`) with a
-custom carryless-`%`, `decide` irreducibility there over the ≈510 monic candidates of degree
-≤ 8, then transport "no factor" back to `Polynomial` through a proven representation iso — whose
-hard half (the mirror↔`Polynomial` factor correspondence) is itself most of the work.
+The CLOSING route (see `Gf16IrreducibleMirror.lean` / `Gf16IrreducibleBridge.lean`): a `List Bool`
+mirror of `F2[x]` with schoolbook polynomial remainder whose `noSmallFactor POLY 8 = true` kernel-
+`decide`s in seconds (pure Bool reduction, no axioms), transported to `(ZMod 2)[X]` via a `toPoly`
+map, the `bmod = %ₘ` correspondence, and enumeration completeness, then assembled through
+`Monic.irreducible_iff_lt_natDegree_lt`. The degree-1 stratum (`POLY_poly_no_linear_factor` above)
+is one corroborating piece of that argument.
 
-The degree-1 stratum is closed above (`POLY_poly_no_linear_factor`). Until `Irreducible
-POLY_poly` is proved, the field instance `Field (U16, gfAddV, gfMulV) ≅ GaloisField 2 16` and
-the unconditional `decode ∘ encode = id` capstone must carry `Irreducible POLY_poly` (or
-`Fact (Irreducible POLY_poly)`) as an explicit, satisfiable PREMISE — never an axiom. -/
+Consequently the field instance `Field (U16, gfAddV, gfMulV) ≅ GaloisField 2 16` and the
+`decode ∘ encode = id` capstone no longer need to carry `Irreducible POLY_poly` as an open premise:
+it is discharged by `POLY_poly_irreducible`. -/
 
 end Spqr.Gf16Field

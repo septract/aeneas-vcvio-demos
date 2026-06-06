@@ -40,6 +40,7 @@ import Demos.Spqr.RsLagrangeBridge
 import Demos.Spqr.Authenticator
 import Demos.Spqr.ChainSplit
 import Demos.Spqr.RatchetPrg
+import Demos.Spqr.TripleRatchetComponent
 import Demos.Spqr.AuthMac
 import Demos.Spqr.StatesGraph
 import Demos.AuthChannel.Mac

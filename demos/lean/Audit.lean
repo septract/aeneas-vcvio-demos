@@ -30,6 +30,7 @@ import Demos.Crypto.HmacPrf
 import Demos.Spqr.ChainSplit
 import Demos.Ratchet.GenericIndexed
 import Demos.Spqr.RatchetPrg
+import Demos.Spqr.TripleRatchetComponent
 import Demos.Spqr.Gf16Field
 import Demos.Spqr.RsBridge
 import Demos.Spqr.RsInterp
@@ -286,6 +287,19 @@ import Demos.Spqr.Gf16IrreducibleBridge
 #print axioms Spqr.RatchetPrg.spqrGen_step_eq
 #print axioms Spqr.RatchetPrg.spqr_ratchet_advantage_le_sum
 #print axioms Spqr.RatchetPrg.spqr_ratchet_secure_asymptotic
+
+-- Triple Ratchet COMPONENT BRIDGE: the SPQR keystream as the antecedent of TR Thm 4.2's "KDF2 is a
+-- secure PRG" hypothesis (Dodis, Jost, Katsumata, Prest, Schmidt; EUROCRYPT 2025 / ePrint 2025/078).
+-- TR Thm 4.2 p.21 (assumption "KDF2 is a secure PRG"); KDF2 = Fig 9 p.20 lines 15/50 (KR ↦ (KR',K_aead));
+-- "secure PRG" = Def 2.6 p.10 (matches VCVio's prgAdvantage shape exactly); consumed as the q·Adv^PRG
+-- term of Lemma 4.7 p.23. spqr_chain_step_discharges_TR_KDF2_PRG WIRES our already-proven
+-- spqr_ratchet_secure_asymptotic to that named hypothesis: under the per-hop PRG floor (an explicit
+-- premise — exactly as TR ASSUMES KDF2-PRG rather than proving it; NOT an axiom, NO new game) the
+-- extracted SPQR keystream is pseudorandom. spqr_keystream_advantage_le_kdf2_sum re-exports the
+-- unconditional Σε bound. NOT claimed: the HKDF/SHA-256 PRG floor itself, TR's CKA/SM game, TR's
+-- FS/PCS windows. The per-hop PRG-ness is a HYPOTHESIS, so the axiom set stays the standard three.
+#print axioms Spqr.TripleRatchetComponent.spqr_chain_step_discharges_TR_KDF2_PRG
+#print axioms Spqr.TripleRatchetComponent.spqr_keystream_advantage_le_kdf2_sum
 
 -- SPQR Reed-Solomon codec field core: polynomial evaluation (encoder chunk generation),
 -- pointwise add, and scalar multiply over GF(2^16) — all total.

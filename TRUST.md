@@ -194,6 +194,21 @@ session-key-indistinguishability) and SPQR (SCKA) proofs would reduce over. Thos
 built** (see Deferred). Their trust profile is therefore dominated by two surfaces beyond the
 Layer-0 extractor, plus the hardness floor:
 
+> **⚠️ The mirror↔upstream joint is the dominant risk, and PQXDH is the higher-risk side.**
+> The single biggest untrusted link in the whole chain is the hand-written Rust mirror vs. real
+> deployed libsignal (the `(C)` surface in the first table row) — `make verify` says **nothing**
+> about it; it is checked only by human review of the `XREF` tags. **This risk is asymmetric:**
+> - **SPQR (lower risk):** `demos/rust/spqr/gf.rs` tracks the *portable `unaccelerated` path that
+>   Signal itself formally verifies* with hax/F\* (the mirror reproduces code with upstream
+>   functional-correctness annotations against `Spec.GF16`). So the mirror has an upstream
+>   machine-checked anchor to check against.
+> - **PQXDH (higher risk):** upstream libsignal PQXDH has **no** hax/formal annotations — the mirror
+>   is a unilateral hand-port with no upstream formal artifact to cross-check, and its KDF/
+>   `derive_with_label` binding is exactly the error-dense layer the Bhargavan–Jacomme–Kiefer–Schmidt
+>   (USENIX '24) re-encapsulation attack lived in. A transcription error there would be invisible to
+>   the tooling. **Prioritise human review of the PQXDH mirror over the SPQR mirror.**
+
+
 | Surface | Class | Notes / precedent |
 |---|---|---|
 | **Faithfulness of the Rust mirror to upstream** — `demos/rust/{pqxdh,spqr}/*.rs` mirror pinned libsignal `5441a83` (v0.94.3) / SPQR `f2589fe` (v1.5.1) | **(C)** ⚠️ | the **key supervisory surface** for these nodes. The correspondence is agent-authored and machine-uncheckable; it is recorded per-site as `XREF: file:lines @commit [class]` tags (`grep -rn XREF demos/rust`). Almost all are `[type-only]` (`Vec`→fixed array, `GF16`→`u16`, `Result`→`Option`, `repr(C)` reinterpret→slice copy, Horner↔power-table); a reviewer checks each tag against the cited upstream lines. The divergence classes are defined in each file header. |

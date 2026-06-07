@@ -50,17 +50,23 @@
      really does evaluate the interpolant), so the theorem is GENUINE and NON-VACUOUS — it
      does NOT secretly assume its own conclusion.
 
-  ## What this file does NOT do (the honest open obligations, unchanged from prior rounds)
+  ## What THIS file does (conditional) vs what is now discharged DOWNSTREAM
 
-  - It does NOT prove the field instance (B-mul Stage 2 + `Irreducible POLY_poly` stay the
-    documented gaps in `Gf16Field.lean` / `Gf16FieldAssembly.lean`).
-  - It does NOT prove that the extracted `lagrange_interpolate` loops compute Mathlib's
-    `Lagrange.interpolate` (the `hbridge` premise). The value specs in `RsInterp.lean`
-    characterize the loops as `gfMulV`/`gfAddV`/`gfDivV` recurrences but do not yet connect
-    them to `Lagrange.interpolate`; doing so needs the field laws (to identify `gfDivV` with
-    the field inverse and the recurrences with the basis polynomials) and is the natural next
-    refinement target. So the UNCONDITIONAL round-trip stays open; `decode_value_at_eq`
-    (result 1) is the unconditional in-boundary fact this round banks.
+  This file states the round-trip CONDITIONALLY on `hfield`/`hbridge` — that framing is still
+  correct here. What has changed since this file was written: BOTH obligations are now CLOSED in
+  later modules, so the conditional capstone below is consumed by an unconditional wrapper.
+
+  - The field instance: B-mul Stage 2 is CLOSED (`Gf16ReduceTable.stage2_proved`/`hmul_proved`)
+    and `Irreducible POLY_poly` is now a real theorem (`Gf16IrreducibleBridge.POLY_poly_irreducible`,
+    kernel-checked `List Bool` mirror). So `Gf16FieldInstance` supplies a genuine `Field` instance.
+  - `hbridge` (the extracted `lagrange_interpolate` loops compute Mathlib's `Lagrange.interpolate`)
+    is DERIVED in `RsLagrangeBridge.decode_value_at_eval_eq_interpolate`, using `RsDivInverse` to
+    read `gfDivV` as the field inverse and matching the recurrences to the basis polynomials.
+
+  Net: `Gf16IrreducibleBridge.decode_value_at_roundtrip_gf16_unconditional` discharges both and
+  drops the `[Fact (Irreducible POLY_poly)]` binder — the UNCONDITIONAL round-trip is CLOSED (over
+  the genuine non-degeneracy hypotheses only). `decode_value_at_eq` (result 1) remains the
+  unconditional, field-law-free in-boundary fact this file itself banks.
 -/
 import Demos.Spqr.RsBridge
 import Demos.Spqr.RsRoundtrip

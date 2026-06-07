@@ -302,7 +302,8 @@ the `u32` half of `gf_mul = poly_reduce ∘ poly_mul`) denotes EXACTLY the polyn
 `toPoly32 (polyMulV a b) = toPoly a * toPoly b` over `(ZMod 2)[X]`. Proved structurally from
 the carryless XOR-fold matched against `Polynomial.coeff_mul` — no field laws, no value-space
 `decide`, no axiom. This is the multiplicative half's first stage; the reduction (`poly_reduce`
-= remainder mod `POLY_poly`) is the documented Stage 2 gap. -/
+= remainder mod `POLY_poly`) is Stage 2, now CLOSED in `Gf16ReduceTable.lean`
+(`stage2_proved`/`hmul_proved`, axiom-clean). -/
 theorem toPoly32_polyMulV (a b : Std.U16) :
     toPoly32 (polyMulV a b) = toPoly a * toPoly b := by
   apply Polynomial.ext

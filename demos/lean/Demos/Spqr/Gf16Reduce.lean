@@ -36,11 +36,15 @@
 
   i.e. the table reduction `poly_reduce` realizes reduction mod `POLY_poly` on the
   bit↔coefficient embedding. So the entire remaining multiplicative obligation is exactly
-  this one statement about the extracted `gf.poly_reduce`. It is NOT closed this round (the
-  256-entry table-double-fold = polynomial remainder is a separate, heavier structural
-  obligation) and is left as the precise documented gap — never an axiom, `sorry`, or
-  `native_decide`. Closing it would discharge `hmul`, upgrading the `Gf16FieldAssembly`
-  ring laws (`gfMulV_comm`/`_assoc`/`_one`/`_distrib`) from CONDITIONAL to UNCONDITIONAL.
+  this one statement about the extracted `gf.poly_reduce`.
+
+  STATUS (updated): this obligation is now CLOSED — `Gf16ReduceTable.stage2_proved`
+  (`Stage2 := poly_reduce_residue`) discharges Stage 2, and `Gf16ReduceTable.hmul_proved`
+  then upgrades the `Gf16FieldAssembly` ring laws (`gfMulV_comm`/`_assoc`/`_one`/`_distrib`)
+  from CONDITIONAL to UNCONDITIONAL — all axiom-clean (`[propext, Classical.choice,
+  Quot.sound]`), never an axiom, `sorry`, or `native_decide`. The `Stage2`/`hmul_iff_stage2`
+  statements remain HERE as the localized obligation; their discharging proofs live in
+  `Gf16ReduceTable.lean`.
 -/
 import Demos.Spqr.Gf
 import Demos.Spqr.Gf16Field

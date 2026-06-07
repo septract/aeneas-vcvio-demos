@@ -22,16 +22,19 @@
     (it is `AdjoinRoot.instField` under `Fact (Irreducible POLY_poly)`), so the only carried
     algebraic premise is irreducibility — a genuine reduction of the assumption surface.
 
-  ## What this file does NOT do (the honest open obligation)
+  ## Status (updated — both former obligations now CLOSED)
 
-  - It does NOT prove `hbridge` itself (that the extracted `prepare`/`complete`/`divFold`/`compute_at`
-    recurrences compute Mathlib's `Lagrange.interpolate`/`eval` over GF(2¹⁶)). That identification
-    additionally needs `gfDivV` read as the field inverse (the Fermat-ladder value spec, not yet
-    built) and the `prepareFoldFn`/`divFold` recurrences matched to the Lagrange basis polynomials.
-    With the field instance now in hand (`Gf16FieldInstance`), this is the natural next target;
-    here `hbridge` remains an explicit, satisfiable premise — never an axiom.
-  - `Irreducible POLY_poly` stays the documented gap (`Gf16Field.lean` §4: `decide` is dead on
-    `(ZMod 2)[X]`); it is carried as `[Fact (Irreducible POLY_poly)]`, satisfiable, never an axiom.
+  - `hbridge` (that the extracted `prepare`/`complete`/`divFold`/`compute_at` recurrences compute
+    Mathlib's `Lagrange.interpolate`/`eval` over GF(2¹⁶)) is now DERIVED in `RsLagrangeBridge`
+    (`decode_value_at_eval_eq_interpolate`), using `gfDivV` read as the field inverse
+    (`RsDivInverse`). The `_derived`/`_of_dist` capstones here consume it, so `hbridge` is no
+    longer a carried premise for those.
+  - `Irreducible POLY_poly` is now a real theorem (`Gf16IrreducibleBridge.POLY_poly_irreducible`,
+    via the kernel-checked `List Bool` mirror), so `Gf16IrreducibleBridge.decode_value_at_roundtrip_gf16_unconditional`
+    drops the `[Fact (Irreducible POLY_poly)]` binder entirely. The conditional theorems in THIS
+    file remain (stated under `[Fact …]`) as the building blocks that the unconditional wrappers
+    discharge; nothing here is an axiom. The only premises left on the roundtrip are the genuine
+    non-degeneracy hypotheses (distinct nodes, low message degree, codeword-of-`f`).
 -/
 import Demos.Spqr.RsCapstone
 import Demos.Spqr.Gf16FieldInstance

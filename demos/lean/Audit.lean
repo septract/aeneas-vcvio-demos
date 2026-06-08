@@ -51,6 +51,7 @@ import Demos.Spqr.RsCompleteBridge
 import Demos.Spqr.RsLagrangeBridge
 import Demos.Spqr.Gf16IrreducibleMirror
 import Demos.Spqr.Gf16IrreducibleBridge
+import Demos.Demo6Ake
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -1097,3 +1098,55 @@ import Demos.Spqr.Gf16IrreducibleBridge
 #print axioms HmacPrf.cascadeFixedLen_prfAdvantage_le_sum_upToBad
 
 #print axioms Spqr.Gf16IrreducibleBridge.adjoinRoot_pow_eq_inv_unconditional
+
+-- Demo 6 (v2 — protocol-shaped key-indistinguishability over Aeneas-extracted Rust): a one-pass
+-- KEM-based key-transport protocol extracted from synthetic Rust (`demos/rust/ke.rs`, Charon+Aeneas)
+-- with session key = H(shared), H = (·^0x5C) injective. HONEST SCOPE: the synthetic byte KEM does
+-- NOT satisfy IND-CPA (the shared secret leaks from (pk,ct); see the module docstring) — the value
+-- is the COMPOSITION CAPABILITY, a protocol KI game over extracted code reduced to a primitive game,
+-- NOT byte-level security; the KEM IND-CPA advantage is the reduction *target*, never an assumed
+-- smallness bound (so no unsatisfiable premise is consumed).
+--   `decapsK_encapsK_correct` — extracted decaps∘encaps recovers the shared secret on a keypair.
+--   `deriveK_injective` — the session-key derivation is a bijection (involution); the NON-DEGENERACY
+--     witness that fixes the v1 constant-collapse (v1's `k_i XOR k_r` annihilated to a constant).
+--   `kemKe_correct` — the functional KEM is perfectly correct (CorrectExp = 1).
+--   `ki_advantage_eq_kem_ind_cpa` — THE meaningful bound: the single-session KI advantage of any
+--     distinguisher EQUALS the KEM IND-CPA advantage of its reduction `kiToKemAdversary` (zero slack;
+--     real branch is literal post-composition by `deriveK`, random branch by permutation invariance).
+--     An unconditional equality, not a constant-vs-uniform trivially-won equality (the v1 trap).
+-- Axiom-clean ([propext, Classical.choice, Quot.sound]).
+--   `realSessionKey_not_constant` — the multi-session real session key is NOT a constant (two coin
+--     vectors give different stored session keys for a fixed pk): the protocol-game analogue of the
+--     anti-v1 non-degeneracy, ruling out the v1 constant-collapse for the multi-session game.
+--   `akeAdvantagePk_eq_boolDistAdvantage` — the protocol-shaped multi-session KI advantage (over a
+--     mutable session table with `Send`/`Reveal`/`Test` and non-constant freshness, fixed responder
+--     public key) EQUALS the boolean distinguishing advantage between the all-`Test`-REAL and
+--     all-`Test`-RANDOM runs — the single secret bit governs every `Test`.
+--   `akeAdvantagePk_le_sum_hybridStep` — THE multi-session bound (Boneh-Shoup §5.4 generic
+--     multi-message hybrid): for a distinguisher issuing ≤ Q oracle queries, the multi-session KI
+--     advantage ≤ ∑_{i<Q} the single-`Test`-swap distinguishing advantage between the depth-`i` and
+--     depth-`(i+1)` switching hybrids, discharged through the reusable Demos.Crypto.OracleHybrid
+--     telescoping (FCF OracleHybrid.v `G1_G2_close`). Each per-hop term is a genuine single-session
+--     real-vs-random `Test` swap — the caller's atomic obligation, which the single-session
+--     `ki_advantage_eq_kem_ind_cpa` identifies with the assumed KEM IND-CPA advantage; NOT an axiom,
+--     NOT a trivially-won equality. (Honest scope: this synthetic kemKe's IND-CPA advantage is large,
+--     so no byte-level security is certified — the value is the composition capability.)
+#print axioms Demo6Ake.decapsK_encapsK_correct
+#print axioms Demo6Ake.deriveK_injective
+#print axioms Demo6Ake.kemKe_correct
+#print axioms Demo6Ake.ki_advantage_eq_kem_ind_cpa
+--   `ki_advantage_le_of_kem_ind_cpa_le` — the ASSUMPTION-DISCHARGE form: ASSUMING a smallness bound
+--     `ε` on the KEM IND-CPA advantage of the reduction adversary, the single-session KI advantage is
+--     `≤ ε` (the shape the real proof takes; the premise is a satisfiable hypothesis on the DERIVED
+--     adversary, not a constant — not vacuous). Derived from the exact equality above.
+#print axioms Demo6Ake.ki_advantage_le_of_kem_ind_cpa_le
+#print axioms Demo6Ake.realSessionKey_not_constant
+#print axioms Demo6Ake.akeAdvantagePk_eq_boolDistAdvantage
+#print axioms Demo6Ake.akeAdvantagePk_le_sum_hybridStep
+--   `akeAdvantagePk_le_nsmul` — the `Q · ε` ASSUMPTION-DISCHARGE form (Boneh-Shoup §5.5 `Q·primitive`
+--     shape): if every single-`Test`-swap hop has distinguishing advantage ≤ ε (the per-session
+--     real-vs-random obligation, = the assumed KEM IND-CPA advantage by the single-session structure),
+--     then a ≤ Q-query distinguisher has multi-session KI advantage ≤ Q • ε. Derived from the proved
+--     sum-bound by uniformly bounding each summand (advantage_le_nsmul_hybridStep). The per-hop premise
+--     is a genuine satisfiable boolDistAdvantage hypothesis, not a constant — not vacuous.
+#print axioms Demo6Ake.akeAdvantagePk_le_nsmul

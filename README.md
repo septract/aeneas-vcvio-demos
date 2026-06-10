@@ -37,6 +37,7 @@ scripts/             audit.sh (the soundness gate `make verify` runs) + dev-work
 demos/
   rust/              Rust sources (the only checked-in input to extraction)
     otp.rs  stream.rs  ratchet.rs  chacha.rs  mac.rs
+    ke.rs                              SYNTHETIC one-pass KEM key transport (Demo 6; not a libsignal mirror)
     pqxdh/pqxdh.rs                     PQXDH key-schedule glue (libsignal source)
     spqr/gf.rs  spqr/authenticator.rs  SPQR field arith + codec + authenticator glue
     spqr/states.rs                     SPQR typestate transition structure (SCKA syntax)
@@ -50,6 +51,7 @@ demos/
       Ratchet/       Step.lean  Chain.lean  Chacha.lean  Cost.lean  ForwardSecrecy.lean  Generic.lean
       AuthChannel/   Mac.lean  SufCma.lean  MacCost.lean
       KemDem/        Composition.lean
+      Demo6Ake.lean  Demo6AkeCorrupt.lean   protocol KI game over synthetic extracted ke.rs (defines games — see TRUST.md)
       Pqxdh/         KeySchedule.lean
       Spqr/          Gf.lean  Authenticator.lean  States.lean
       Crypto/        Sha256.lean
@@ -86,6 +88,7 @@ make clean      # remove generated artifacts (keeps the Mathlib build cache)
 | Ratchet width scaling | `Demos/Ratchet/Generic.lean` | — | the hybrid is **width-agnostic**: proven over an abstract length-doubling split bijection `B ≃ K × K`, so security holds for a family whose key/block **width grows with the security parameter** (`Chain.lean` is the fixed-width instance) |
 | MAC / message authentication | `Demos/AuthChannel/{Mac,SufCma,MacCost}.lean` | `mac.verify` (32-byte constant-length tag compare) | first **integrity / active-adversary** demo: the extracted `verify` decides 32-byte tag equality (loop invariant); the canonical PRF-based MAC (the libsignal HMAC shape) is perfectly complete and **SUF-CMA-secure (strong unforgeability) by a reduction to PRF security**, closed to `SUF_CMA_Advantage ≤ prfAdvantage(reduction) + 1/\|Tag\|` with `1/\|Tag\| = 2⁻²⁵⁶`; the reduction is also proved query-efficient (`MacCost.lean`) |
 | KEM/DEM → PKE composition | `Demos/KemDem/Composition.lean` | `combine` (Demo 2's 32-byte XOR loop, reused as the DEM) | **public-key encryption by composition**: VCVio's KEM+DEM → PKE composition instantiated with a one-time symmetric DEM whose encryption is the **extracted stream-cipher XOR**, keyed by a PRG seed. The DEM is perfectly correct (extracted-loop involution) and the composed PKE is one-time IND-CPA secure, with the headline `composed_ind_cpa_le_prg` bottoming out on just **KEM-IND-CPA + PRG** (the DEM term discharged to PRG, the same assumption as Demo 2); asymptotically negligible via VCVio's `Negligible` |
+| Protocol key-indistinguishability (KEM key exchange) | `Demos/Demo6Ake.lean`, `Demos/Demo6AkeCorrupt.lean` | `ke.rs` (**synthetic** one-pass KEM key transport, session key = `H(shared)`, Boneh–Shoup §11.5) | the first **protocol-shaped** game over extracted code: a **multi-session key-indistinguishability** game (Send / Reveal / Corrupt / Test oracles + a partner-aware cleanness predicate) whose advantage reduces — *zero-slack equality* — to a **KEM IND-CPA assumption**, plus the **cleanness-under-corruption** layer (Boneh–Shoup §21). Unlike Demos 1–5 it **defines its own games** (transcribed from published definitions; new (C) trust surface — see `TRUST.md`). **Synthetic & honest scope:** the KEM is degenerate-by-design and the IND-CPA assumption is *uninstantiated*, so this proves the *composition capability* (a protocol game over extracted Rust, reduced to a primitive game) — **not** real-protocol security |
 
 ### Top-level theorems (what each demo actually proves)
 
@@ -220,6 +223,44 @@ proved secure). The honest end-to-end reading is: **`P(extracted Lean)` (the the
   IND-CPA advantage bottoms out on **KEM-IND-CPA + PRG** (the same PRG assumption as Demo 2). No new
   security *game* is defined — every notion (KEM/DEM/PKE IND-CPA) is reused verbatim from VCVio, so
   this result stays entirely on the supervisable side (see `TRUST.md`).
+
+- **Demo 6 (protocol key-indistinguishability over extracted Rust) — `Demo6Ake.canonAke_advantage_eq_kem_ind_cpa`,
+  `Demo6Ake.ki_advantage_eq_kem_ind_cpa`, `Demo6Ake.akeAdvantagePk_le_nsmul`,
+  `Demo6AkeCorrupt.cleanKi_advantage_eq_kem_ind_cpa`, `Demo6AkeCorrupt.corruptAfterTest_neutralized`**
+  (conditional / capability). The first **protocol-shaped** result and the first that **defines its own
+  security games**. The construction is a **synthetic** one-pass KEM key transport (`ke.rs`, textbook
+  Boneh–Shoup §11.5 `ℰ_EG`: session key `= H(shared secret)`, with `H` the injective `deriveK`,
+  `deriveK_injective`). Over it:
+  - a **single-session** KI game whose advantage *equals* the KEM IND-CPA advantage of an explicit
+    reduction (`ki_advantage_eq_kem_ind_cpa`, zero slack — `deriveK` is the registered bijection);
+  - a **multi-session** running game (real `Send`/`Test` oracle handler, mutable session table,
+    non-constant freshness) whose advantage is bounded by the Boneh–Shoup §5.4 `Q`-query hybrid sum
+    (`akeAdvantagePk_le_sum_hybridStep` / `akeAdvantagePk_le_nsmul`); the running game's connection to
+    the KEM reduction is discharged **as a theorem for the canonical single-session distinguisher**
+    (`akeGame_canonAke_eq_KI_Game` → `canonAke_advantage_eq_kem_ind_cpa`) — the fully adaptive
+    guess-the-session reduction is left as documented future work;
+  - **cleanness under corruption** (`Demos/Demo6AkeCorrupt.lean`, Boneh–Shoup §21): a `Corrupt` oracle
+    over long-term keys + a partner-aware cleanness predicate `cleanIn`, with the corruption-aware
+    single-clean-session advantage equal to a KEM IND-CPA reduction (`cleanKi_advantage_eq_kem_ind_cpa`).
+    A **definitional flaw found by working the reduction by hand** — gating cleanness at `Test`-time
+    only admits a compromise-*after*-test win with no assumption — is fixed by the standard whole-trace
+    convention (`finalClean` / `cakeGameFinal`) and the fix is **proved on the running game**:
+    `corruptAfterTest_neutralized` shows that distinguisher has advantage *exactly 0* in the corrected
+    game. Non-degeneracy (`realSessionKey_not_constant`) and both-sided cleanness non-triviality
+    (`exists_clean_test_session` + the `*_unclean` guards; `finalClean_witness` + the
+    `tested_*_not_finalClean` exclusions) are machine-checked.
+
+  *Honest scope (stated throughout the modules).* The protocol is **synthetic** and the KEM is
+  degenerate-by-design (the shared secret leaks from `(pk, ct)`), so the KEM IND-CPA assumption is
+  **uninstantiated** and **no real-protocol security is certified** — the value is the demonstrated
+  *composition capability*: a protocol-level, corruption-aware security game stated over Aeneas-extracted
+  Rust and reduced (zero-slack) to a primitive game. The cleanness predicate models the
+  `vulnerable`/trap-exclusion fragment of §21, **not** the positive `connected-to-J` key-inheritance
+  mechanism, and only the static + perfect-forward-secrecy fragment (no corruption *window*). Because
+  Demo 6 defines games, those games are a new **(C)** trust surface — recorded with precedent and
+  behavioural cross-checks in `TRUST.md`. The transferable lessons (the running-game↔reduction seam; the
+  freshness *evaluation-point* subtlety) are written up target-independently in
+  `docs/2026-06-08_protocol-ki-game-over-extracted-code.md`.
 
 All of the above (and the underlying reductions/correctness) are gated by `make verify`, which
 asserts every headline theorem depends **only** on `[propext, Classical.choice, Quot.sound]` —

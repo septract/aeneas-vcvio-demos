@@ -1,9 +1,11 @@
 # Trust Ledger
 
-*Last updated: 2026-06-02 (audit-fixes branch: outside-view-audit remediations — de-claimed the
-BJKS attribution to PQXDH glue; added ChaCha quarter-round functional correctness, class-relative
-stream-cipher security, the FS⇒keystream implication; clarified the FS modeling choice and the
-SUF-CMA rule adjudication).*
+*Last updated: 2026-06-09 (Demo 6 landed: the first protocol-shaped game over extracted Rust, and the
+second place — after `SUF_CMA_Exp` — that **defines security games** here; added the Demo 6 section
+with precedent + cross-checks and corrected the "only defined-here game" claims accordingly. Prior:
+2026-06-02 outside-view-audit remediations — de-claimed the BJKS attribution to PQXDH glue; added
+ChaCha quarter-round functional correctness, class-relative stream-cipher security, the FS⇒keystream
+implication; clarified the FS modeling choice and the SUF-CMA rule adjudication.)*
 
 This file tracks **where the demos introduce trust** — the surfaces a reader must believe in
 order to believe the headline theorems mean what we say they mean. It exists because the
@@ -114,17 +116,18 @@ is preferred, treat the FS *interpretation* (not the theorem) as pending cryptog
 | `PRFScheme` / `prfAdvantage`, `prfRealExp`/`prfIdealExp`, lazy `randomOracle` | (T) | VCVio `CryptoFoundations/PRF.lean`, `QueryTracking/*` |
 | `IsTotalQueryBound` (efficiency / cost measure) | (T) | VCVio `QueryBound.lean` (reused from Demo 3) |
 | Constructions: `macAlg` (instance of `MacAlg`), `reduction`, `fwdLogImpl` over extracted `mac.rs` | (C) | value-adequacy (`verify_spec_pointwise`) + reduction-correctness (`prfRealExp_reduction_eq`) pin them |
-| **`SUF_CMA_Exp` / `SUF_CMA_Advantage`** — the strong-unforgeability game | **(C)** ⚠️ | **the one defined-here security *game* in the whole repo** (with its supporting `wasQueriedPair`/`macGameCore`) — see detailed justification below |
+| **`SUF_CMA_Exp` / `SUF_CMA_Advantage`** — the strong-unforgeability game | **(C)** ⚠️ | a defined-here security *game* (with its supporting `wasQueriedPair`/`macGameCore`) — a *1-predicate delta* from VCVio's trusted `UF_CMA_Exp`; see detailed justification below. (Demo 6 also defines games — the KI / cleanness-under-corruption games — but from a *blank-slate* transcription of Boneh–Shoup, a larger surface; see the Demo 6 section.) |
 | Side condition: `macAlg_perfectlyComplete` assumes `prf.UniformKey` (and `[SampleableType K]`) | **(A)**/note | perfect completeness is stated only for uniform-key PRFs — a benign, standard side condition, but it *is* a hypothesis on a listed headline, so it is surfaced here |
 | `2^-256` numeric reading of the `(Fintype.card Tag)⁻¹` security terms | (T)/checked | **machine-checked** by `card_Tag : Fintype.card Tag = 2^256` (`Mac.lean`, in the audit) — not an informal claim |
 | **"`F` is a PRF"** (the MAC's keyed function, modelling HMAC-SHA256) | **(A)** | standard named assumption; an HMAC-is-a-PRF demo (deferred — see below) would discharge it to the SHA-256 compression function |
 
 Headlines: `verify_spec_pointwise`, `macAlg_perfectlyComplete`, the UF-CMA chain (`simulateQ_prfReal_fwdLog`, `prfRealExp_reduction_eq`, `macUF_le_prfAdvantage_add_RF`, `reduction_RF_le`, `macUF_le`), the SUF-CMA results (`sufAdv_le_ufAdv`, `macSUF_le`, `suf_gate_iff`, `sufAdv_eq_ufAdv`), and the cost bounds (`reduction_queryBound`, `reduction_polyQueryBound`).
 
-### The single (C) security definition: `SUF_CMA_Exp`
+### The (C) security definition: `SUF_CMA_Exp`
 
-This is the only place in the repo where we define a security *game* not inherited from VCVio, so
-it gets explicit justification:
+This was the *first* place in the repo where we define a security *game* not inherited from VCVio
+(Demo 6 is the other — see its section), so it gets explicit justification. It is the *minimal* such
+case: a one-predicate delta from a trusted game.
 
 1. **Precedent.** Strong unforgeability (freshness on the `(message, tag)` *pair* rather than the
    message) is the standard textbook notion — Bellare–Namprempre, *Authenticated Encryption*
@@ -181,6 +184,84 @@ The asymptotic version `composed_secure_asymptotic` lifts this end-to-end bound 
 already-trusted `Negligible` framework (class T, `Asymptotics/Negligible.lean`, as in Demos 2–3):
 negligible KEM and PRG advantages ⇒ negligible composed-PKE advantage. Still **no new game** — only
 the reused advantage notions are indexed by a security parameter.
+
+---
+
+## Demo 6 — protocol key-indistinguishability over extracted Rust (`Demos/Demo6Ake.lean`, `Demos/Demo6AkeCorrupt.lean`)
+
+The first **protocol-shaped** demo and the second place (after `SUF_CMA_Exp`) that **defines security
+games here** — and the larger of the two surfaces, because the games are transcribed *blank-slate*
+from a textbook (not a 1-predicate delta from a VCVio game). It is therefore the most trust-laden demo
+on the definitional axis, and is contained by precedent + behavioural cross-checks (the pattern this
+ledger requires of any (C) game). It is also deliberately **synthetic**: the point is the *shape* of
+the result, not a security claim about the byte core.
+
+> **⚠️ Read the scope before the theorems.** The construction (`ke.rs`) is a **synthetic, degenerate-
+> by-design** KEM key transport: the shared secret leaks from the public `(pk, ct)` (`sk = pk^0xFF`),
+> so the **KEM IND-CPA assumption is uninstantiated** and **no real-protocol / byte-level security is
+> certified**. What Demo 6 demonstrates is the *composition capability*: that a protocol-level,
+> corruption-aware key-indistinguishability game can be **stated over Aeneas-extracted Rust** and
+> **reduced (zero slack) to a primitive (KEM IND-CPA) game** inside VCVio. The reduction inequalities
+> are real theorems; the smallness of the KEM advantage they bottom out on is the (uninstantiated) (A).
+
+| Surface | Class | Notes / precedent |
+|---|---|---|
+| `KEMScheme` IND-CPA game (`IND_CPA_Game`/`IND_CPA_Advantage`) — the reduction *target* | (T) | VCVio `CryptoFoundations/KeyEncapMech.lean`, reused verbatim |
+| `Demos.Crypto.OracleHybrid` (the generic `Q`-query hybrid) | (C, prior) | built earlier; reused here for the multi-session bound — constructions over trusted advantage notions, not a game |
+| Construction: `kemKe` (a `KEMScheme` over the **extracted** `ke.rs` ops) + `deriveK` (the session-key KDF) | (C) | value-adequacy `decapsK_encapsK_correct`, `kemKe_correct`, and the entropy-preserving bijection `deriveK_injective` pin them to the extracted Rust |
+| **Single-session KI game** `KI_Game`/`KI_Advantage` | **(C)** ⚠️ | defined here; the real-or-random session-key challenge. Precedent: Boneh–Shoup §11.5 `ℰ_EG` (key transport, session key `= H(shared)`) + the standard KI/left-or-right game. Pinned by `ki_advantage_eq_kem_ind_cpa` (KI advantage **equals** the KEM IND-CPA advantage of an explicit reduction — zero slack) and the non-degeneracy cross-check `realSessionKey_not_constant`. |
+| **Multi-session running game** `akeGame`/`akeAdvantage` (Send/Reveal/Test handler over a mutable session table, non-constant `Session.fresh`) | **(C)** ⚠️ | defined here. Bounded by the Boneh–Shoup §5.4 `Q`-query hybrid (`akeAdvantagePk_le_sum_hybridStep` / `_le_nsmul`). The running-game↔KEM-reduction link is proved **only for the canonical single-session distinguisher** (`akeGame_canonAke_eq_KI_Game` → `canonAke_advantage_eq_kem_ind_cpa`); the general adaptive guess-the-session reduction is **not** built (documented future work). |
+| **Cleanness-under-corruption** — `cleanIn` predicate, `Corrupt` oracle, `cakeGame`/`cakeGameFinal`, `CorruptKI_Game` | **(C)** ⚠️ | defined here. Precedent: Boneh–Shoup §21.9 static AKE (Def 21.1) + §21.9.3 PFS (Def 21.2), partner function, `vulnerable` rule. Corruption-aware single-clean-session advantage **equals** a KEM IND-CPA reduction (`cleanKi_advantage_eq_kem_ind_cpa`). **Scope:** models the `vulnerable`/trap-exclusion fragment, **not** the positive `connected-to-J` key-inheritance mechanism; static + PFS only (no corruption *window*). |
+| **`F`/the session-key derivation modeled, and the KEM is IND-CPA-secure** | **(A)** | the single hardness assumption — kept abstract as a hypothesis on `kemKe`'s IND-CPA advantage, **deliberately uninstantiated** (the synthetic KEM does not satisfy it). The reductions discharge KI *to* this advantage. |
+
+### Why these (C) games are contained (the required precedent + cross-checks)
+
+Per this ledger's maintenance rule, a defined-here game must carry a precedent citation and behavioural
+cross-checks. For Demo 6:
+
+1. **Precedent.** Key transport with `session key = H(shared)` and its KI reduction is Boneh–Shoup
+   *A Graduate Course in Applied Cryptography* v0.6 §11.5 (`ℰ_EG`, Thm 11.4); the multi-message →
+   single-message step is the standard §5.4 `Q`-query hybrid; the cleanness/Corrupt/Test AKE game is
+   §21.9 (Def 21.1) and its PFS variant §21.9.3 (Def 21.2). The PDF is on disk at
+   `deps/papers/boneh-shoup-v0.6.pdf`; the module docstrings cite section/theorem/page.
+2. **Non-vacuity, machine-checked (both sides).** `realSessionKey_not_constant` (the session key
+   genuinely depends on the coins — the anti-degeneracy fact); `deriveK_injective` (the derivation is
+   entropy-preserving, so the random branch stays uniform). For cleanness:
+   `exists_clean_test_session` / `clean_with_live_partner` (a clean Test session *exists*, even with a
+   live partner) **and** the `*_then_test_unclean` guards (`corrupt_peer`, `reveal_self`,
+   `reveal_partner`, `tested`) — the trivial corruption/reveal attacks are *excluded*. The predicate is
+   thus neither too strong (vacuous) nor too weak (trivially won).
+3. **The reductions are genuine, not vacuous.** Each headline reduction is an *equality* to the KEM
+   IND-CPA advantage of an *explicit* reduction adversary (`kiToKemAdversary`, `corruptKiToKemAdversary`,
+   `kiToKemAdversary ∘ canonKI`) that embeds the KEM challenge through the `deriveK` bijection — not a
+   constant-vs-uniform gap. `canonAke_advantage_eq_kem_ind_cpa` evaluates the **running** game's handler
+   to show it *is* that reduction for the canonical distinguisher.
+4. **A definitional flaw was found and fixed, and the fix is a theorem.** Gating cleanness at `Test`
+   time only admits a compromise-*after*-test distinguisher that wins with **no** assumption (recover
+   the key via `decapsK` correctness after corrupting the peer). The fix is whole-trace freshness
+   (`finalClean` / `cakeGameFinal`, the standard §21 / FG convention); `corruptAfterTest_neutralized`
+   proves that distinguisher has advantage **exactly 0** in the corrected running game
+   (`cleanIn_eq_freshAtEnd_and_not_tested` + the `tested_*_not_finalClean` exclusions + the
+   `finalClean_witness` anti-vacuity pin it). The matching "old game wins" lower bound is ≈1 modulo a
+   `2⁻²⁵⁶` collision, so it is left as a non-exact design observation.
+
+A formal-methods-literate supervisor can validate (2)–(4) mechanically against the cited theorems; (1)
+is the precedent that makes the games the right ones — checkable against the on-disk PDF. The work
+underwent two decorrelated adversarial reviews (inside + outside); their two MEDIUM findings (the fix
+was predicate-level only; "faithful transcription" overstated by omitting `connected-to-J`) were
+remediated — the former by proving `corruptAfterTest_neutralized`, the latter by the scope wording above.
+
+Headlines (all `[propext, Classical.choice, Quot.sound]`): `Demo6Ake.{decapsK_encapsK_correct,
+deriveK_injective, kemKe_correct, ki_advantage_eq_kem_ind_cpa, ki_advantage_le_of_kem_ind_cpa_le,
+realSessionKey_not_constant, akeAdvantagePk_eq_boolDistAdvantage, akeAdvantagePk_le_sum_hybridStep,
+akeAdvantagePk_le_nsmul, akeGame_canonAke_eq_KI_Game, canonAke_advantage_eq_kem_ind_cpa}` and
+`Demo6AkeCorrupt.{compatible_symm, corrupt_peer_then_test_unclean, reveal_self_then_test_unclean,
+reveal_partner_then_test_unclean, tested_then_test_unclean, exists_clean_test_session,
+clean_reachable_under_corruption, findPartner_compatible, partner_symmetric, partnered_compatible,
+clean_with_live_partner, reveal_live_partner_unclean, realCleanSessionKey_not_constant, cleanIn_bit_irrel,
+cakeImpl_run_eq_cakeStepImpl, cakeAdvantage_eq_boolDistAdvantage, cleanKi_advantage_eq_kem_ind_cpa,
+cleanIn_eq_freshAtEnd_and_not_tested, tested_peer_corrupted_not_finalClean, tested_revealed_not_finalClean,
+corruptAfterTest_not_finalClean, finalClean_witness, corruptAfterTest_neutralized}`.
 
 ---
 

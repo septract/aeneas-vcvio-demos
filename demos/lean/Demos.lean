@@ -55,3 +55,4 @@ import Demos.Crypto.PrfReduction
 import Demos.Crypto.OracleHybrid
 import Demos.Crypto.Sha256Wire
 import Demos.Demo6Ake
+import Demos.Demo6AkeCorrupt

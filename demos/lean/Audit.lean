@@ -52,6 +52,7 @@ import Demos.Spqr.RsLagrangeBridge
 import Demos.Spqr.Gf16IrreducibleMirror
 import Demos.Spqr.Gf16IrreducibleBridge
 import Demos.Demo6Ake
+import Demos.Demo6AkeCorrupt
 
 -- Demo 1: one-time pad, perfect secrecy (unconditional).
 #print axioms OtpSecurity.otpAeneas_perfectSecrecyAt
@@ -1150,3 +1151,96 @@ import Demos.Demo6Ake
 --     sum-bound by uniformly bounding each summand (advantage_le_nsmul_hybridStep). The per-hop premise
 --     is a genuine satisfiable boolDistAdvantage hypothesis, not a constant — not vacuous.
 #print axioms Demo6Ake.akeAdvantagePk_le_nsmul
+--   THE CANONICAL SINGLE-SESSION BRIDGE (closes the "running game vs KEM reduction" seam):
+--   `akeGame_canonAke_eq_KI_Game` — the RUNNING multi-session game (real Send/Test/freshness oracle
+--     handler executing: coin sampling, table mutation, the freshness gate) on the canonical
+--     query-driven distinguisher `canonAke D` (= `send; test 0; output D challenge`) evaluates
+--     EXACTLY to the structural single-session `KI_Game`. Proved by unfolding `simulateQ` over the two
+--     queries through the `StateT` handler — no axiom, no `sorry`.
+--   `canonAke_advantage_eq_kem_ind_cpa` — hence the running-game advantage of `canonAke D` EQUALS the
+--     KEM IND-CPA advantage of the explicit reduction `kiToKemAdversary (canonKI D)` (zero slack). For
+--     this distinguisher class the running protocol game is machine-checked to BE the KEM reduction —
+--     not merely bounded by a per-hop term whose KEM meaning is asserted in prose. (The fully adaptive
+--     multi-Test guess-the-session reduction remains the documented next step.)
+#print axioms Demo6Ake.akeGame_canonAke_eq_KI_Game
+#print axioms Demo6Ake.canonAke_advantage_eq_kem_ind_cpa
+
+-- Demo 6.1 (Demos.Demo6AkeCorrupt): cleanness-under-corruption — the GENUINE hard part of AKE
+-- key-indistinguishability games (FG PQXDH key-indistinguishability, TR/SCKA). Extends Demo 6's KI
+-- game with LONG-TERM KEYS + a Corrupt oracle + a PARTNER-AWARE cleanness predicate faithful to
+-- Boneh-Shoup §21.9.3 (PFS-secure AKE, Def 21.2, the revised `vulnerable` rule + Remark 21.4
+-- KCI-resistance). All axiom-clean ([propext, Classical.choice, Quot.sound]).
+--   `compatible_symm` — the §21.9 `compatible` partner triple (peer/owner cross-match + role mismatch
+--     + loosely-matching `sid`) is SYMMETRIC (well-formed partnering, p.888).
+--   `corrupt_peer_then_test_unclean` — ANTI-TRIVIAL-WIN (the v1-class trap at the corruption layer):
+--     corrupting the Test session's PEER makes it UNCLEAN, so the "Corrupt peer, recompute sk=pk^0xFF,
+--     decaps sid, derive, distinguish" attack is excluded (clause (d), the §21.9.3 `vulnerable` rule).
+--   `reveal_self_then_test_unclean` / `reveal_partner_then_test_unclean` / `tested_then_test_unclean`
+--     — the Reveal-self / partner-Reveal (connected-to-J rule, p.888) / already-tested traps.
+--   `exists_clean_test_session` / `clean_reachable_under_corruption` — ANTI-VACUITY: a clean Test
+--     session EXISTS even on a state where a (non-peer) party is ALREADY corrupted — so the predicate
+--     is not too strong (the clean branch is reachable under corruption; cleanness is LOCAL to the
+--     peer, not the global "no party ever corrupted").
+--   `findPartner_compatible` / `partner_symmetric` — the set partner is a genuinely `compatible`,
+--     in-range, mutual session (clause (b) consults the right session, never aliased/out-of-range).
+--   `partnered_compatible` / `clean_with_live_partner` / `reveal_live_partner_unclean` — clause (b)
+--     is NON-VACUOUS WITH A LIVE PARTNER: two concrete sessions are genuinely `compatible`, a clean
+--     session with a recognised (partner = some j) unrevealed partner EXISTS, and revealing exactly
+--     that partner makes it unclean (so clause (b) bites on a real partner, not only on `none`).
+--   `realCleanSessionKey_not_constant` — NON-DEGENERACY survives: a CLEAN session's real key is still
+--     non-constant (depends on the coins), so gating Test on cleanness does not collapse the real
+--     branch to a constant (the anti-v1 fact at the corruption layer).
+--   `cleanIn_bit_irrel` — `cleanIn` ignores the challenge bit (reads only the party + session tables),
+--     the bridge from the bit-carrying `cakeImpl` gate to the bit-parameterized `cakeStepImpl` gate.
+--   `cakeImpl_run_eq_cakeStepImpl` / `cakeAdvantage_eq_boolDistAdvantage` — `cleanIn` is GENUINELY
+--     EXERCISED by a running game: the multi-session corruption-aware game `cakeGame`, whose every
+--     `Test` query is gated by `s.cleanIn`, projects its hidden bit identically (state-projection
+--     identity, the corruption-aware analogue of `akeImpl_run_eq_akeStepImpl`) and its advantage
+--     collapses to the real-vs-random distinguishing advantage. This closes the "cleanIn is orphaned
+--     from any game" seam: `cleanIn` now gates a real `OracleComp` run, not only the guard lemmas.
+--   `cleanKi_advantage_eq_kem_ind_cpa` — THE REDUCTION RESPECTS CLEANNESS (an equality, zero slack),
+--     over the STRUCTURAL single-clean-session model `CorruptKI_Game` (clause (d) baked in by never
+--     emitting skStar; the link to the literal `cleanIn` is via the guard lemmas + the clean-gated
+--     `cakeGame`, NOT an end-to-end composition — see the theorem docstring's "honest seam"):
+--     the corruption-aware single-session KI advantage EQUALS the KEM IND-CPA advantage of the
+--     reduction `corruptKiToKemAdversary`, which embeds the challenge ONLY in the uncorrupted peer P*
+--     and SELF-SIMULATES Corrupt for every other party (the standard B-S §21.9.3 reduction structure).
+--     The reduction NEVER computes P*'s secret (it respects clause (d) honestly, not via the synthetic
+--     sk=pk^0xFF leak). Honest scope: this synthetic kemKe's IND-CPA advantage is large, KEM IND-CPA
+--     stays UNINSTANTIATED, no byte-level security — value is the cleanness EXPRESSIBILITY + respect.
+#print axioms Demo6AkeCorrupt.compatible_symm
+#print axioms Demo6AkeCorrupt.corrupt_peer_then_test_unclean
+#print axioms Demo6AkeCorrupt.reveal_self_then_test_unclean
+#print axioms Demo6AkeCorrupt.reveal_partner_then_test_unclean
+#print axioms Demo6AkeCorrupt.tested_then_test_unclean
+#print axioms Demo6AkeCorrupt.exists_clean_test_session
+#print axioms Demo6AkeCorrupt.clean_reachable_under_corruption
+#print axioms Demo6AkeCorrupt.findPartner_compatible
+#print axioms Demo6AkeCorrupt.partner_symmetric
+#print axioms Demo6AkeCorrupt.partnered_compatible
+#print axioms Demo6AkeCorrupt.clean_with_live_partner
+#print axioms Demo6AkeCorrupt.reveal_live_partner_unclean
+#print axioms Demo6AkeCorrupt.realCleanSessionKey_not_constant
+#print axioms Demo6AkeCorrupt.cleanIn_bit_irrel
+#print axioms Demo6AkeCorrupt.cakeImpl_run_eq_cakeStepImpl
+#print axioms Demo6AkeCorrupt.cakeAdvantage_eq_boolDistAdvantage
+#print axioms Demo6AkeCorrupt.cleanKi_advantage_eq_kem_ind_cpa
+--   END-OF-GAME FRESHNESS (a definitional flaw found by working the reduction by hand, then fixed):
+--   the multi-session `cakeGame` gated `cleanIn` AT TEST TIME ONLY, which (with the dynamic Corrupt/
+--   Reveal oracles) admits a compromise-AFTER-test distinguisher winning with advantage ≈1 and NO KEM
+--   assumption (`send; test; corrupt peer; recover the real key via decapsK correctness`). The fix is
+--   the standard whole-trace convention (B-S §21 / FG `clean` on the full transcript): `cakeGameFinal`
+--   scores only if the FINAL state is `finalClean`, else a coin. The registered facts:
+--   `cleanIn_eq_freshAtEnd_and_not_tested` — the Test-time and end-of-game predicates differ ONLY in
+--     the not-yet-tested clause (c); the fix strengthens, does not change, the cleanness notion.
+--   `tested_peer_corrupted_not_finalClean` / `tested_revealed_not_finalClean` — GENERIC exclusion: any
+--     trace ending with a tested session whose peer is corrupted (resp. own key revealed) fails
+--     `finalClean`, so the compromise-after-test attacks are scored as coins (zero bias), never wins.
+--   `corruptAfterTest_not_finalClean` — the concrete corrupt-after-test final state fails finalClean.
+--   `finalClean_witness` — ANTI-VACUITY: a tested-and-still-fresh final state PASSES finalClean, so the
+--     corrected game still scores honest clean traces (both-sided non-triviality of the convention).
+#print axioms Demo6AkeCorrupt.cleanIn_eq_freshAtEnd_and_not_tested
+#print axioms Demo6AkeCorrupt.tested_peer_corrupted_not_finalClean
+#print axioms Demo6AkeCorrupt.tested_revealed_not_finalClean
+#print axioms Demo6AkeCorrupt.corruptAfterTest_not_finalClean
+#print axioms Demo6AkeCorrupt.finalClean_witness

@@ -982,4 +982,72 @@ theorem akeAdvantagePk_le_nsmul (pk : Block) (adv : AkeAdversary)
   rw [hybridStep_eq_boolDistAdvantage]
   exact hε i hi
 
+/-! ## The canonical single-session bridge: the running game IS the KEM reduction.
+
+The hybrid bound above (`akeAdvantagePk_le_sum_hybridStep`) decomposes the running multi-session
+advantage into per-session `Test`-swap hops, and `ki_advantage_eq_kem_ind_cpa` reduces the
+*structural* single-session game to KEM IND-CPA — but nothing yet connects the two: the per-hop
+distinguishing terms are stated over the counted handlers, and the docstrings *assert* "by the
+single-session structure this is the assumed KEM advantage" only in prose. This is the "two
+disconnected towers" seam (an outside reviewer flagged exactly its corruption-aware analogue).
+
+We close it for the canonical single-session distinguisher. The `akeSpec` adversary is purely
+query-driven (it cannot sample its own coins — `akeSpec` does not subsume `unifSpec`), so the
+canonical distinguisher is `send; test 0; return (D challenge)` for a decision function
+`D : Block → Bool`. We prove that the RUNNING game on this adversary (with the real `Send`/`Test`
+oracle handler, freshness gate, and table mutation actually executing) equals the STRUCTURAL
+single-session KI game on the corresponding two-phase adversary — hence, by
+`ki_advantage_eq_kem_ind_cpa`, equals the KEM IND-CPA advantage of an explicit reduction. So for
+this distinguisher class the running-game advantage is *not merely bounded by* a per-hop term whose
+meaning is asserted — it is machine-checked to BE the KEM reduction. -/
+
+/-- The canonical single-session distinguisher in the running game: open one session (`Send`),
+challenge it (`Test 0`), and output a decision `D` on the returned challenge key. Purely
+query-driven — the honest shape of a coin-free `akeSpec` adversary. -/
+def canonAke (D : Block → Bool) : AkeAdversary := do
+  let _c ← akeSpec.query .send
+  let ch ← akeSpec.query (.test 0)
+  pure (D ch)
+
+/-- The structural two-phase distinguisher matching `canonAke D`: no pre-challenge state, and the
+post-challenge phase outputs `D` applied to the candidate session key. -/
+def canonKI (D : Block → Bool) : KI_Adversary where
+  State := Unit
+  preChallenge _ := pure ()
+  postChallenge _ _ k := pure (D k)
+
+/-- **The running game evaluates to the structural game (canonical distinguisher).** Running
+`canonAke D` against the real `akeImpl pk` handler — `Send` samples coins and encapsulates to `pk`,
+storing `deriveK shared`; `Test 0` finds the fresh session and returns `if b then key else kRand`,
+marking it tested — produces exactly the structural `KI_Game`'s post-challenge distribution. The
+handler's table mutation, freshness gate, and coin/key sampling all execute; `run'` discards the
+final table. Proved by unfolding `simulateQ` over the two queries (`simulateQ_bind`/`_query`) and the
+`StateT` plumbing, then matching the resulting `ProbComp` do-block to `KI_Game (canonKI D)`. -/
+theorem akeGame_canonAke_eq_KI_Game (D : Block → Bool) :
+    evalDist (akeGame (canonAke D)) = KI_Game (canonKI D) := by
+  unfold akeGame KI_Game canonAke canonKI kemKe QueryImpl.Stateful.run
+  simp only [simulateQ_bind, simulateQ_query, simulateQ_pure,
+    OracleQuery.input_query, OracleQuery.cont_query, StateT.run'_eq, StateT.run_bind,
+    StateT.run_pure, akeImpl, StateT.run_mk, Session.fresh, List.nil_append, List.getD_cons_zero,
+    pure_bind, bind_assoc, id_map, Bool.not_false, Bool.and_true,
+    if_true, map_bind, bind_map_left]
+  rfl
+
+/-- **Headline — the canonical running game IS the KEM reduction (an equality).** The multi-session
+running-game advantage of the canonical single-session distinguisher `canonAke D` equals the KEM
+IND-CPA advantage of the explicit reduction `kiToKemAdversary (canonKI D)`. This is the missing wire
+made into a theorem: the running protocol game (real `Send`/`Test`/freshness oracle handler) on this
+distinguisher class is machine-checked to reduce to the assumed KEM game — not merely bounded by a
+per-hop term whose KEM meaning is asserted in prose. (The fully adaptive, multi-`Test`
+guess-the-session reduction remains the documented next step; this closes the seam for the canonical
+single-session distinguisher, on the running game, with zero slack.) -/
+theorem canonAke_advantage_eq_kem_ind_cpa (D : Block → Bool) :
+    akeAdvantage (canonAke D)
+      = kemKe.IND_CPA_Advantage ProbCompRuntime.probComp (kiToKemAdversary (canonKI D)) := by
+  have hadv : akeAdvantage (canonAke D) = KI_Advantage (canonKI D) := by
+    unfold akeAdvantage KI_Advantage ProbComp.boolBiasAdvantage SPMF.boolBiasAdvantage
+    simp only [probOutput, akeGame_canonAke_eq_KI_Game, SPMF.evalDist_def]
+  rw [hadv]
+  exact ki_advantage_eq_kem_ind_cpa (canonKI D)
+
 end Demo6Ake

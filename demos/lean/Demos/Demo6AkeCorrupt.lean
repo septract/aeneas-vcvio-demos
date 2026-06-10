@@ -27,6 +27,14 @@
      rule (Def 21.2): a finished instance gets the real/random key UNLESS its `pid` (= our `peer`)
      belongs to a compromised user.
 
+     SCOPE OF THE PREDICATE (honest): we model the `vulnerable`/`fresh` TRAP-EXCLUSION role of
+     partnering — clause (b) forbids scoring a session whose partner's key was revealed — but NOT the
+     POSITIVE `connected-to-J` key-INHERITANCE mechanism of §21.9 (where a partnered instance's
+     effective session key is *defined as* its partner's, `I.esk ← J.esk`). For this synthetic KEM
+     partnered sessions do share a key, but we never model that inheritance as the game's semantics;
+     so the `connected-to-J` reduction case is OUT OF SCOPE here. This is a real simplification beyond
+     the window-collapse scope limit below — see the Honest-scope section.
+
   We prove, axiom-clean (`[propext, Classical.choice, Quot.sound]`):
   - `exists_clean_test_session` / `clean_reachable_under_corruption` — anti-vacuity: a clean Test
     session EXISTS, even on a state where a (non-peer) party is already corrupted (so the clean
@@ -744,7 +752,10 @@ keypairs are sampled identically on both sides (so the pre-challenge phases coin
 branch is literal `deriveK` post-composition; the random branch is `deriveK` of a uniform key =
 uniform, by the registered bijection `deriveEquiv` (permutation invariance). The reduction embeds
 the challenge ONLY in the uncorrupted peer `P*` and simulates `Corrupt` for every other party itself
-— the standard B-S §21.9.3 reduction structure, here proved.
+— the `vulnerable`-exclusion fragment of the B-S §21.9.3 reduction structure (the maximally-corrupting
+single-clean-session case), here proved. It does NOT cover the §21.9 `connected-to-J` partner case
+(effective-key inheritance) nor the full multi-session hybrid; those are out of scope (see the module
+header's predicate-scope note).
 
 HOW THIS RELATES TO `cleanIn` (the honest seam — read this).** This equality is stated over
 `CorruptKI_Game`, which models cleanness STRUCTURALLY, NOT by invoking the `cleanIn` predicate: the
@@ -835,7 +846,36 @@ convention, compatible with `boolBiasAdvantage`).
 This is precisely the multi-trap cleanness-predicate subtlety the FG-transcription assessment
 flagged as the open risk (the `clean^PQXDH` trap class), here surfaced CONCRETELY by the synthetic
 rehearsal — the derisking this demo exists to do. The lesson for the real transcription: the
-freshness predicate's EVALUATION POINT is as load-bearing as its clauses. -/
+freshness predicate's EVALUATION POINT is as load-bearing as its clauses.
+
+PRECISELY WHAT IS AND IS NOT PROVED HERE (read before trusting the "fix" claim).
+  PROVED (machine-checked, axiom-clean):
+    - the corrected game `cakeGameFinal` is DEFINED with the whole-trace `finalClean` gate;
+    - `finalClean` GENERICALLY rejects the attack shape: any state with a tested session whose peer
+      is corrupted (`tested_peer_corrupted_not_finalClean`) or whose own key is revealed
+      (`tested_revealed_not_finalClean`) fails `finalClean`; a concrete corrupt-after-test state
+      fails it (`corruptAfterTest_not_finalClean`);
+    - ANTI-VACUITY: a tested-and-still-fresh state PASSES `finalClean` (`finalClean_witness`), so the
+      gate does not collapse honest clean traces to coins;
+    - `cleanIn_eq_freshAtEnd_and_not_tested`: the fix only adds the `!tested` query-gate to the
+      end-of-game predicate, so it STRENGTHENS rather than changes the cleanness notion;
+    - **RUNNING-GAME neutralization** (`corruptAfterTest_neutralized`): the actual compromise-after-
+      test distinguisher, RUN through `cakeGameFinal` (`Send; Test; Corrupt-peer; output anything`),
+      has advantage EXACTLY 0 — its run reaches a state failing `finalClean`, so the game scores an
+      independent coin. This is the "fix works" claim discharged at the level of the GAME, not just
+      the predicate.
+  NOT proved here (left as future work, and honestly so):
+    - that the ORIGINAL `cakeGame` achieves advantage ≈ 1 on the attack: this is a design
+      observation, NOT a machine-checked separation — it is only ≈1 modulo a `2⁻²⁵⁶` `kRand`
+      collision, so the matching lower bound is not an exact theorem (the EXACT, provable half is the
+      neutralization above);
+    - a positive advantage BOUND for `cakeGameFinal` against an ARBITRARY adversary: the registered
+      reduction (`cleanKi_advantage_eq_kem_ind_cpa`) is over the structural `CorruptKI_Game`, NOT over
+      `cakeGameFinal`. Wiring the corrected running game to the KEM reduction for a general adversary
+      (the adaptive guess-the-session reduction) is the next step.
+  So "found a flaw and fixed it" is now a theorem about the running corrected game for the attack
+  class that breaks the at-Test-time game; what remains open is the general-adversary advantage bound
+  for `cakeGameFinal`. -/
 
 /-- End-of-game freshness for a (tested) session: clauses (a)/(b)/(d) of `cleanIn`, read against
 the FINAL state. Clause (c) (`!tested`) is deliberately ABSENT: at game end every scored session
@@ -927,5 +967,61 @@ branch does not swallow honest runs). Together with `tested_peer_corrupted_not_f
 convention, mirroring the Test-time pair (`exists_clean_test_session` + the `*_unclean` guards). -/
 theorem finalClean_witness : cleanFinalState.finalClean = true := by
   decide
+
+/-! ## The corrected game NEUTRALIZES the attack (a theorem over the running `cakeGameFinal`).
+
+The exclusion facts above are predicate-level (over hand-built states). This section discharges the
+"the fix works" claim at the level of the RUNNING corrected game: the exact compromise-after-test
+distinguisher — `Send; Test; Corrupt-peer; output anything` — has advantage EXACTLY 0 in
+`cakeGameFinal`, because its run ends in a state that fails `finalClean`, so the game scores an
+independent coin. Contrast the original at-Test-time `cakeGame`, where this distinguisher wins (the
+recovered key matches the challenge) — that direction is only ≈1 modulo a `2⁻²⁵⁶` `kRand` collision,
+so it is not an EXACT theorem; the neutralization below IS exact and is the half that certifies the
+fix on the running game (not merely on the predicate). -/
+
+/-- The corrupt-after-test distinguisher as a genuine `cakeSpec` adversary: open a session to peer 1,
+Test it, THEN corrupt peer 1, and output an arbitrary decision `out` on what it saw. (`out` is
+universally quantified: even the cleverest such distinguisher — e.g. one recomputing the real key via
+`decapsK` — is covered, since the corrected game never reads its output.) -/
+def corruptAfterTestAdv (out : Block → Block → Block → Bool) : CAkeAdversary := do
+  let ct ← cakeSpec.query (.send 0 1 false)
+  let ch ← cakeSpec.query (.test 0)
+  let sk ← cakeSpec.query (.corrupt 1)
+  pure (out ch sk ct)
+
+/-- Bias of any "sample-then-fresh-coin" computation is 0: the trailing uniform `Bool` is independent
+of the prefix, and a uniform `Bool` has equal `true`/`false` mass. -/
+lemma boolBiasAdvantage_bind_const_uniformBool {α : Type} (mx : ProbComp α) :
+    (do let _ ← mx; ($ᵗ Bool : ProbComp Bool)).boolBiasAdvantage = 0 := by
+  unfold ProbComp.boolBiasAdvantage
+  rw [probOutput_bind_const mx ($ᵗ Bool) true, probOutput_bind_const mx ($ᵗ Bool) false,
+    probOutput_uniformSample_inj (x := true) (y := false)]
+  simp
+
+/-- **The corrected game neutralizes the corrupt-after-test attack (advantage EXACTLY 0).** For
+honest-start parties (`p1` uncorrupted), the corrupt-after-test distinguisher `corruptAfterTestAdv out`
+— which wins the at-Test-time `cakeGame` — has advantage `0` in `cakeGameFinal` for EVERY decision
+function `out`. Mechanism (machine-checked): running it through `cakeImpl.runState` reaches a final
+state whose lone session is `tested` and whose peer (party 1) is `corrupted`, so `finalClean = false`
+(`tested_peer_corrupted_not_finalClean`); the game therefore takes the `else` branch and returns an
+independent fresh coin, whose bias is 0. This is the running-game counterpart of the predicate-level
+exclusion — it is what makes "we fixed the flaw" a theorem about the GAME, not just the predicate. -/
+theorem corruptAfterTest_neutralized
+    (p0 p1 : Party) (hp1 : p1.corrupted = false) (out : Block → Block → Block → Bool) :
+    cakeAdvantageFinal [p0, p1] (corruptAfterTestAdv out) = 0 := by
+  unfold cakeAdvantageFinal cakeGameFinal corruptAfterTestAdv QueryImpl.Stateful.runState
+  simp only [simulateQ_bind, simulateQ_query, simulateQ_pure,
+    OracleQuery.input_query, OracleQuery.cont_query, StateT.run_bind, StateT.run_mk,
+    StateT.run_pure, id_map, cakeImpl, CGameState.updateSession, CGameState.corruptParty,
+    Session.fresh, CSession.cleanIn, CGameState.peerCorrupted,
+    List.nil_append, List.getD_cons_zero, List.getD_cons_succ, List.set_cons_zero,
+    List.set_cons_succ, findPartner, List.zipIdx_nil, List.find?_nil, Option.map_none,
+    hp1, Bool.not_false, Bool.and_true, Bool.true_and, if_true, bind_assoc, pure_bind,
+    CGameState.finalClean, CSession.freshAtEnd, List.all_cons, List.all_nil,
+    Bool.and_false, Bool.or_false, Bool.false_or, Bool.not_true, if_false, Bool.false_eq_true]
+  -- The final state fails `finalClean`, so the game is `do b←$; x←$; x_1←$; $ᵗ Bool` — a fresh coin
+  -- independent of all samples. Collapse the trailing binds and apply the const-coin bias lemma.
+  simp only [← bind_assoc]
+  exact boolBiasAdvantage_bind_const_uniformBool _
 
 end Demo6AkeCorrupt

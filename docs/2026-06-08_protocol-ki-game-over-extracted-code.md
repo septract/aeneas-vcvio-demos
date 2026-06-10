@@ -16,9 +16,13 @@ Created 2026-06-08. All claims correspond to machine-checked, axiom-clean theore
 
 1. **The expressibility is real and not the hard part.** A multi-session KI game over extracted
    primitive ops — mutable session table, adaptive oracle interface, a non-constant freshness
-   predicate, a real-or-random `Test` — elaborates and runs in the framework. So does a faithful
-   AKE *cleanness-under-corruption* predicate (long-term-key `Corrupt` + partner-awareness),
-   transcribed from a published definition.
+   predicate, a real-or-random `Test` — elaborates and runs in the framework. So does an AKE
+   *cleanness-under-corruption* predicate (long-term-key `Corrupt` + partner-awareness), rendering the
+   `vulnerable`/trap-exclusion fragment of a published definition. (Caveat worth stating up front: a
+   *faithful* rendering of the trap-exclusion role of partnering is not the same as modeling the
+   published definition's *positive* `connected-to-J` effective-key-inheritance mechanism — that, and
+   the corruption-window/HSM variants, are deliberately out of scope for a static + perfect-forward-
+   secrecy synthetic rehearsal. Name what you model and what you don't.)
 2. **The hard part is connecting the running game to its reduction**, and it has two distinct
    sub-difficulties, each of which produced a concrete lesson here:
    - **(Lesson A — the running-game↔reduction seam.)** A hybrid bound that decomposes the running

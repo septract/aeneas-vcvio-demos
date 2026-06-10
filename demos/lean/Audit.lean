@@ -1239,8 +1239,15 @@ import Demos.Demo6AkeCorrupt
 --   `corruptAfterTest_not_finalClean` — the concrete corrupt-after-test final state fails finalClean.
 --   `finalClean_witness` — ANTI-VACUITY: a tested-and-still-fresh final state PASSES finalClean, so the
 --     corrected game still scores honest clean traces (both-sided non-triviality of the convention).
+--   `corruptAfterTest_neutralized` — THE FIX, AS A RUNNING-GAME THEOREM: the corrupt-after-test
+--     distinguisher (`Send; Test; Corrupt-peer; output anything`), RUN through `cakeGameFinal`, has
+--     advantage EXACTLY 0 for honest-start parties and any decision function — its run reaches a state
+--     failing `finalClean`, so the game scores an independent coin. This discharges "the fix works" at
+--     the level of the GAME (not just the predicate); the matching old-game-wins lower bound is ≈1
+--     modulo a 2⁻²⁵⁶ collision and is left as a (non-exact) design observation.
 #print axioms Demo6AkeCorrupt.cleanIn_eq_freshAtEnd_and_not_tested
 #print axioms Demo6AkeCorrupt.tested_peer_corrupted_not_finalClean
 #print axioms Demo6AkeCorrupt.tested_revealed_not_finalClean
 #print axioms Demo6AkeCorrupt.corruptAfterTest_not_finalClean
 #print axioms Demo6AkeCorrupt.finalClean_witness
+#print axioms Demo6AkeCorrupt.corruptAfterTest_neutralized

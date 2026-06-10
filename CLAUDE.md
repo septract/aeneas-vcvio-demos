@@ -9,6 +9,26 @@ Only stop to ask for user input when:
 - a task is ambiguous, or might be unsafe or break the rules, or
 - you are genuinely stuck.
 
+## Longer-term direction & plan
+
+The eventual goal is a machine-checked security proof of **real libsignal** (PQXDH key agreement +
+SPQR/SCKA secure messaging). When planning multi-step work, keep this trajectory in mind and consult
+the two living planning notes (in `internal/`, gitignored / local to this checkout):
+
+- `internal/2026-06-10_libsignal-trust-audit.md` — the expert-cryptographer trust-surface audit: where
+  the repo stands vs the goal, findings by (T)/(C)/(A)/(X) class, the two end-to-end reduction towers,
+  and a ranked roadmap. **Dominant risk = the mirror↔real-libsignal faithfulness** (the `(C)` surface
+  `make verify` cannot reach).
+- `internal/2026-06-10_longterm-plan.md` — the sequenced plan in two buckets: **(1)** in-bounds
+  build-out needing no cryptographic innovation (symmetric-floor KATs, the RS Lagrange bridge, the
+  Demo 6 adaptive reduction, the reusable multi-session game framework, game *shells as types*); then
+  **(2)** the highest-leverage **cryptographer-gated** points (the KEM⊕DH combiner game, the FG / SCKA
+  game definitions, ML-KEM IND-CCA soundness). The plan's core move: do bucket (1) so each bucket (2)
+  expert ask becomes "review this filled-in artifact," not "design from scratch."
+
+Current focus: **bucket (1)**. Every new security *game definition* remains precedent-gated (see
+[[precedent-for-novel-crypto-defs]] / `TRUST.md`) — transcribe published games, never improvise.
+
 ## Integrity
 
 Do not cheat at tasks. These tasks are meant to demonstrate formal verification technologies, so the proofs and results must be genuine. It is critical to NEVER cut corners. In particular, the following are all forbidden:
